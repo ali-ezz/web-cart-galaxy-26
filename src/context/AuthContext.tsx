@@ -1,9 +1,15 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { User } from "@/lib/data";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Session } from "@supabase/supabase-js";
+
+// Define our own User type to match what we get from Supabase
+interface User {
+  id: string;
+  name: string;
+  email: string;
+}
 
 interface AuthContextType {
   user: User | null;
