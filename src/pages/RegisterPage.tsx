@@ -8,12 +8,16 @@ import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
 
 const registerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  confirmPassword: z.string()
+  confirmPassword: z.string(),
+  role: z.string().default("customer")
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -21,11 +25,45 @@ const registerSchema = z.object({
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
+interface RoleQuestion {
+  question: string;
+  type: 'text' | 'textarea';
+  required?: boolean;
+}
+
+const roleQuestions: Record<string, RoleQuestion[]> = {
+  seller: [
+    { 
+      question: "What products do you plan to sell?", 
+      type: "textarea", 
+      required: true 
+    },
+    { 
+      question: "Do you have an existing business?", 
+      type: "text" 
+    },
+  ],
+  delivery: [
+    { 
+      question: "What areas can you deliver to?", 
+      type: "textarea", 
+      required: true 
+    },
+    { 
+      question: "Do you have your own transportation?", 
+      type: "text", 
+      required: true 
+    },
+  ],
+};
+
 export default function RegisterPage() {
   const { register: registerAuth } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [selectedRole, setSelectedRole] = useState('customer');
+  const [questionResponses, setQuestionResponses] = useState<Record<string, string>>({});
   
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -33,20 +71,54 @@ export default function RegisterPage() {
       name: "",
       email: "",
       password: "",
-      confirmPassword: ""
+      confirmPassword: "",
+      role: "customer"
     }
   });
+  
+  const handleRoleChange = (role: string) => {
+    setSelectedRole(role);
+    form.setValue('role', role);
+  };
+  
+  const handleQuestionChange = (questionIndex: number, value: string) => {
+    const questions = roleQuestions[selectedRole];
+    if (questions && questions[questionIndex]) {
+      setQuestionResponses(prev => ({
+        ...prev,
+        [questions[questionIndex].question]: value
+      }));
+    }
+  };
   
   const onSubmit = async (data: RegisterFormValues) => {
     setLoading(true);
     setError('');
     
+    // Validate role-specific questions
+    const questions = roleQuestions[selectedRole] || [];
+    const requiredQuestions = questions.filter(q => q.required);
+    
+    for (const q of requiredQuestions) {
+      if (!questionResponses[q.question]) {
+        setError(`Please answer the required question: ${q.question}`);
+        setLoading(false);
+        return;
+      }
+    }
+    
     try {
       // Use the auth context to register the user
-      const success = await registerAuth(data.name, data.email, data.password);
+      const success = await registerAuth(
+        data.name, 
+        data.email, 
+        data.password,
+        selectedRole,
+        questionResponses
+      );
       
       if (success) {
-        navigate('/');
+        navigate('/auth-confirmation');
       } else {
         setError('Registration failed. Please try again.');
       }
@@ -68,7 +140,7 @@ export default function RegisterPage() {
           </p>
         </div>
         
-        <div className="bg-white rounded-lg shadow-sm p-8">
+        <Card className="p-6">
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6 text-red-600">
               {error}
@@ -148,6 +220,62 @@ export default function RegisterPage() {
                 )}
               />
               
+              <FormField
+                control={form.control}
+                name="role"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Account Type</FormLabel>
+                    <Select 
+                      onValueChange={(value) => {
+                        handleRoleChange(value);
+                        field.onChange(value);
+                      }} 
+                      defaultValue={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select your account type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="customer">Customer</SelectItem>
+                        <SelectItem value="seller">Seller</SelectItem>
+                        <SelectItem value="delivery">Delivery</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              {/* Role-specific questions */}
+              {selectedRole !== 'customer' && roleQuestions[selectedRole] && (
+                <div className="space-y-6 border-t pt-6">
+                  <h3 className="text-lg font-medium">Additional Information</h3>
+                  {roleQuestions[selectedRole].map((q, index) => (
+                    <div key={index} className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        {q.question}{q.required && <span className="text-red-500">*</span>}
+                      </label>
+                      {q.type === 'textarea' ? (
+                        <Textarea 
+                          value={questionResponses[q.question] || ''} 
+                          onChange={(e) => handleQuestionChange(index, e.target.value)}
+                          className="w-full"
+                        />
+                      ) : (
+                        <Input 
+                          type="text" 
+                          value={questionResponses[q.question] || ''} 
+                          onChange={(e) => handleQuestionChange(index, e.target.value)}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              
               <Button
                 type="submit"
                 className="w-full bg-shop-purple hover:bg-shop-purple-dark py-6"
@@ -155,6 +283,15 @@ export default function RegisterPage() {
               >
                 {loading ? 'Creating Account...' : 'Create Account'}
               </Button>
+              
+              <div className="text-center text-sm text-gray-500">
+                <p>
+                  By registering, you agree to our{' '}
+                  <Link to="/terms" className="text-shop-purple hover:underline">Terms of Service</Link>{' '}
+                  and{' '}
+                  <Link to="/privacy" className="text-shop-purple hover:underline">Privacy Policy</Link>
+                </p>
+              </div>
             </form>
           </Form>
           
@@ -166,7 +303,7 @@ export default function RegisterPage() {
               </Link>
             </p>
           </div>
-        </div>
+        </Card>
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -15,8 +15,36 @@ import {
 } from 'lucide-react';
 
 export default function AccountPage() {
-  const { user, logout } = useAuth();
+  const { user, logout, userRole, loading } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Redirect based on user role if not customer
+    if (!loading && user && userRole && userRole !== 'customer') {
+      switch(userRole) {
+        case 'admin':
+          navigate('/admin');
+          break;
+        case 'seller':
+          navigate('/seller');
+          break;
+        case 'delivery':
+          navigate('/delivery');
+          break;
+        default:
+          // Stay on account page
+          break;
+      }
+    }
+  }, [userRole, navigate, loading, user]);
+
+  if (loading) {
+    return (
+      <div className="container mx-auto p-8 flex justify-center">
+        <div className="w-8 h-8 border-4 border-shop-purple border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   if (!user) {
     navigate('/login', { replace: true });

@@ -183,6 +183,7 @@ export type Database = {
           last_name: string | null
           phone: string | null
           postal_code: string | null
+          question_responses: Json | null
           state: string | null
           updated_at: string
         }
@@ -197,6 +198,7 @@ export type Database = {
           last_name?: string | null
           phone?: string | null
           postal_code?: string | null
+          question_responses?: Json | null
           state?: string | null
           updated_at?: string
         }
@@ -211,6 +213,7 @@ export type Database = {
           last_name?: string | null
           phone?: string | null
           postal_code?: string | null
+          question_responses?: Json | null
           state?: string | null
           updated_at?: string
         }
@@ -254,6 +257,27 @@ export type Database = {
           },
         ]
       }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["user_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["user_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["user_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
       wishlists: {
         Row: {
           created_at: string
@@ -288,10 +312,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _user_id: string
+          _role: Database["public"]["Enums"]["user_role"]
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      user_role: "admin" | "customer" | "seller" | "delivery"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -406,6 +436,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      user_role: ["admin", "customer", "seller", "delivery"],
+    },
   },
 } as const

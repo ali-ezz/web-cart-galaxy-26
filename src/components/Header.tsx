@@ -12,12 +12,15 @@ import {
   LogIn, 
   Heart, 
   Menu, 
-  X 
+  X,
+  Package,
+  Truck,
+  Shield
 } from 'lucide-react';
 import { categories } from '@/lib/data';
 
 export function Header() {
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, user, logout, userRole } = useAuth();
   const { cartCount } = useCart();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -27,6 +30,34 @@ export function Header() {
     e.preventDefault();
     if (searchQuery.trim()) {
       navigate(`/search?q=${encodeURIComponent(searchQuery)}`);
+    }
+  };
+
+  // Role-based dashboard link
+  const getDashboardLink = () => {
+    switch (userRole) {
+      case 'admin':
+        return '/admin';
+      case 'seller':
+        return '/seller';
+      case 'delivery':
+        return '/delivery';
+      default:
+        return '/account';
+    }
+  };
+
+  // Role-based dashboard icon
+  const getDashboardIcon = () => {
+    switch (userRole) {
+      case 'admin':
+        return <Shield className="h-5 w-5" />;
+      case 'seller':
+        return <Package className="h-5 w-5" />;
+      case 'delivery':
+        return <Truck className="h-5 w-5" />;
+      default:
+        return <User className="h-5 w-5" />;
     }
   };
 
@@ -75,18 +106,20 @@ export function Header() {
             </Button>
           </Link>
 
-          {/* Wishlist */}
-          <Link to="/wishlist" className="hidden sm:block">
-            <Button variant="outline" size="icon">
-              <Heart className="h-5 w-5" />
-            </Button>
-          </Link>
-
-          {/* Auth */}
-          {isAuthenticated ? (
-            <Link to="/account">
+          {/* Wishlist - hide for delivery users */}
+          {userRole !== 'delivery' && (
+            <Link to="/wishlist" className="hidden sm:block">
               <Button variant="outline" size="icon">
-                <User className="h-5 w-5" />
+                <Heart className="h-5 w-5" />
+              </Button>
+            </Link>
+          )}
+
+          {/* Auth - show different icon based on role */}
+          {isAuthenticated ? (
+            <Link to={getDashboardLink()}>
+              <Button variant="outline" size="icon">
+                {getDashboardIcon()}
               </Button>
             </Link>
           ) : (
@@ -109,23 +142,25 @@ export function Header() {
         </div>
       </div>
 
-      {/* Categories navigation */}
-      <nav className="bg-gray-100 hidden md:block">
-        <div className="container mx-auto px-4">
-          <ul className="flex flex-wrap">
-            {categories.map((category) => (
-              <li key={category}>
-                <Link
-                  to={`/category/${category}`}
-                  className="block px-4 py-2 hover:text-shop-purple transition-colors"
-                >
-                  {category}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </nav>
+      {/* Categories navigation - hide for sellers and delivery */}
+      {userRole !== 'seller' && userRole !== 'delivery' && (
+        <nav className="bg-gray-100 hidden md:block">
+          <div className="container mx-auto px-4">
+            <ul className="flex flex-wrap">
+              {categories.map((category) => (
+                <li key={category}>
+                  <Link
+                    to={`/category/${category}`}
+                    className="block px-4 py-2 hover:text-shop-purple transition-colors"
+                  >
+                    {category}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </nav>
+      )}
 
       {/* Mobile menu */}
       {mobileMenuOpen && (
@@ -158,11 +193,17 @@ export function Header() {
                 <>
                   <li>
                     <Link 
-                      to="/account" 
-                      className="block p-2 hover:bg-gray-50"
+                      to={getDashboardLink()}
+                      className="block p-2 hover:bg-gray-50 flex items-center"
                       onClick={() => setMobileMenuOpen(false)}
                     >
-                      My Account ({user?.name})
+                      {getDashboardIcon()}
+                      <span className="ml-2">
+                        {userRole === 'admin' && 'Admin Dashboard'}
+                        {userRole === 'seller' && 'Seller Dashboard'}
+                        {userRole === 'delivery' && 'Delivery Dashboard'}
+                        {(!userRole || userRole === 'customer') && `My Account (${user?.name})`}
+                      </span>
                     </Link>
                   </li>
                   <li>
@@ -199,29 +240,39 @@ export function Header() {
                   </li>
                 </>
               )}
-              <li>
-                <Link 
-                  to="/wishlist" 
-                  className="block p-2 hover:bg-gray-50"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Wishlist
-                </Link>
-              </li>
-              <li className="border-t border-gray-200 pt-2 mt-2">
-                <span className="block px-2 text-sm font-semibold text-gray-600">Categories</span>
-              </li>
-              {categories.map((category) => (
-                <li key={category}>
-                  <Link
-                    to={`/category/${category}`}
+              
+              {/* Only show wishlist for customers and regular users */}
+              {(userRole === 'customer' || !userRole) && (
+                <li>
+                  <Link 
+                    to="/wishlist" 
                     className="block p-2 hover:bg-gray-50"
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    {category}
+                    Wishlist
                   </Link>
                 </li>
-              ))}
+              )}
+              
+              {/* Only show categories for customers and regular users */}
+              {(userRole === 'customer' || !userRole) && (
+                <>
+                  <li className="border-t border-gray-200 pt-2 mt-2">
+                    <span className="block px-2 text-sm font-semibold text-gray-600">Categories</span>
+                  </li>
+                  {categories.map((category) => (
+                    <li key={category}>
+                      <Link
+                        to={`/category/${category}`}
+                        className="block p-2 hover:bg-gray-50"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        {category}
+                      </Link>
+                    </li>
+                  ))}
+                </>
+              )}
             </ul>
           </div>
         </div>
