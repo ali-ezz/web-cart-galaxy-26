@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useForm } from "react-hook-form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 
 type LoginFormValues = {
   email: string;
@@ -20,22 +21,22 @@ export default function LoginPage() {
   
   const from = location.state?.from || '/';
   
-  const { register, handleSubmit, formState: { errors } } = useForm<LoginFormValues>();
+  const form = useForm<LoginFormValues>();
   
-  const onSubmit = (data: LoginFormValues) => {
+  const onSubmit = async (data: LoginFormValues) => {
     setLoading(true);
     setError('');
     
     try {
       // Use the auth context to log in the user
-      const success = login(data.email, data.password);
+      const success = await login(data.email, data.password);
       
       if (success) {
         navigate(from);
       } else {
         setError('Invalid email or password');
       }
-    } catch (err) {
+    } catch (err: any) {
       setError('An error occurred during login. Please try again.');
       console.error('Login error:', err);
     } finally {
@@ -60,51 +61,49 @@ export default function LoginPage() {
             </div>
           )}
           
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                Email
-              </label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                {...register("email", { 
-                  required: "Email is required",
-                  pattern: {
-                    value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                    message: "Invalid email address"
-                  }
-                })}
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="you@example.com"
+                        type="email"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-              {errors.email && (
-                <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
-              )}
-            </div>
-            
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                  Password
-                </label>
-                <Link to="/forgot-password" className="text-sm text-shop-purple hover:underline">
-                  Forgot Password?
-                </Link>
-              </div>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                {...register("password", { 
-                  required: "Password is required"
-                })}
+              
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="flex justify-between items-center">
+                      <FormLabel>Password</FormLabel>
+                      <Link to="/forgot-password" className="text-sm text-shop-purple hover:underline">
+                        Forgot Password?
+                      </Link>
+                    </div>
+                    <FormControl>
+                      <Input
+                        placeholder="••••••••"
+                        type="password"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-              {errors.password && (
-                <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
-              )}
-            </div>
-            
-            <div>
+              
               <Button
                 type="submit"
                 className="w-full bg-shop-purple hover:bg-shop-purple-dark py-6"
@@ -112,8 +111,8 @@ export default function LoginPage() {
               >
                 {loading ? 'Signing In...' : 'Sign In'}
               </Button>
-            </div>
-          </form>
+            </form>
+          </Form>
 
           <div className="mt-6 text-center">
             <p className="text-gray-600">
@@ -127,10 +126,9 @@ export default function LoginPage() {
 
         {/* Demo accounts section */}
         <div className="mt-8 p-4 border border-gray-200 rounded-lg bg-gray-50">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Demo Accounts:</h3>
+          <h3 className="text-sm font-medium text-gray-700 mb-2">For testing:</h3>
           <div className="text-sm text-gray-600">
-            <p className="mb-1"><strong>Email:</strong> john@example.com</p>
-            <p><strong>Password:</strong> password123</p>
+            <p className="mb-1">Create a new account using the Sign Up page or use credentials provided by admin</p>
           </div>
         </div>
       </div>

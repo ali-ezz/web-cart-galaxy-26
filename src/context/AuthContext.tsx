@@ -1,93 +1,167 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { User, loginUser, registerUser } from "@/lib/data";
+import { User } from "@/lib/data";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { Session } from "@supabase/supabase-js";
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => boolean;
-  register: (name: string, email: string, password: string) => boolean;
-  logout: () => void;
+  session: Session | null;
+  login: (email: string, password: string) => Promise<boolean>;
+  register: (name: string, email: string, password: string) => Promise<boolean>;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
+  loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const { toast } = useToast();
+  const [session, setSession] = useState<Session | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
-    // Check for saved user in localStorage on initial load
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-        setIsAuthenticated(true);
-      } catch (error) {
-        console.error("Failed to parse saved user:", error);
-        localStorage.removeItem("user");
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        if (session?.user) {
+          setUser({
+            id: session.user.id,
+            name: session.user.user_metadata.name || 'User',
+            email: session.user.email || '',
+          });
+          setIsAuthenticated(true);
+        } else {
+          setUser(null);
+          setIsAuthenticated(false);
+        }
       }
-    }
+    );
+
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          name: session.user.user_metadata.name || 'User',
+          email: session.user.email || '',
+        });
+        setIsAuthenticated(true);
+      }
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const login = (email: string, password: string): boolean => {
-    const authenticatedUser = loginUser(email, password);
-    
-    if (authenticatedUser) {
-      setUser(authenticatedUser);
-      setIsAuthenticated(true);
-      // Save user to localStorage (not secure for passwords, but ok for demo)
-      localStorage.setItem("user", JSON.stringify(authenticatedUser));
-      toast({
-        title: "Login Successful",
-        description: `Welcome back, ${authenticatedUser.name}!`,
+  const login = async (email: string, password: string): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       });
-      return true;
-    } else {
+
+      if (error) {
+        toast({
+          title: "Login Failed",
+          description: error.message,
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      if (data.user) {
+        toast({
+          title: "Login Successful",
+          description: `Welcome back, ${data.user.user_metadata.name || data.user.email}!`,
+        });
+        return true;
+      }
+
+      return false;
+    } catch (error: any) {
       toast({
         title: "Login Failed",
-        description: "Invalid email or password",
+        description: error.message || "An unexpected error occurred",
         variant: "destructive",
       });
       return false;
     }
   };
 
-  const register = (name: string, email: string, password: string): boolean => {
+  const register = async (name: string, email: string, password: string): Promise<boolean> => {
     try {
-      const newUser = registerUser(name, email, password);
-      setUser(newUser);
-      setIsAuthenticated(true);
-      localStorage.setItem("user", JSON.stringify(newUser));
-      toast({
-        title: "Registration Successful",
-        description: `Welcome, ${name}!`,
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+          },
+        },
       });
-      return true;
-    } catch (error) {
+
+      if (error) {
+        toast({
+          title: "Registration Failed",
+          description: error.message,
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      if (data.user) {
+        toast({
+          title: "Registration Successful",
+          description: `Welcome, ${name}! Please check your email to verify your account.`,
+        });
+        return true;
+      }
+
+      return false;
+    } catch (error: any) {
       toast({
         title: "Registration Failed",
-        description: "Something went wrong",
+        description: error.message || "An unexpected error occurred",
         variant: "destructive",
       });
       return false;
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    setIsAuthenticated(false);
-    localStorage.removeItem("user");
-    toast({
-      title: "Logged out",
-      description: "You have been successfully logged out",
-    });
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut();
+      
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Logout Failed",
+        description: error.message || "An unexpected error occurred",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isAuthenticated }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      session,
+      login, 
+      register, 
+      logout, 
+      isAuthenticated,
+      loading
+    }}>
       {children}
     </AuthContext.Provider>
   );
