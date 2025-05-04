@@ -11,13 +11,17 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
+import { Database } from '@/integrations/supabase/types';
+
+// Define type for roles from database
+type UserRole = Database["public"]["Enums"]["user_role"];
 
 const registerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   confirmPassword: z.string(),
-  role: z.string().default("customer")
+  role: z.enum(['customer', 'seller', 'delivery', 'admin'] as const).default("customer")
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -62,7 +66,7 @@ export default function RegisterPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [selectedRole, setSelectedRole] = useState('customer');
+  const [selectedRole, setSelectedRole] = useState<UserRole>('customer');
   const [questionResponses, setQuestionResponses] = useState<Record<string, string>>({});
   
   const form = useForm<RegisterFormValues>({
@@ -76,7 +80,7 @@ export default function RegisterPage() {
     }
   });
   
-  const handleRoleChange = (role: string) => {
+  const handleRoleChange = (role: UserRole) => {
     setSelectedRole(role);
     form.setValue('role', role);
   };
@@ -108,12 +112,12 @@ export default function RegisterPage() {
     }
     
     try {
-      // Use the auth context to register the user
+      // Use the auth context to register the user with properly typed role
       const success = await registerAuth(
         data.name, 
         data.email, 
         data.password,
-        selectedRole,
+        data.role,
         questionResponses
       );
       

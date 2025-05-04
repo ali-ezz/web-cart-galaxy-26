@@ -158,9 +158,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ): Promise<boolean> => {
     try {
       // First check if this email already exists
-      const { data: users } = await supabase.auth.admin.listUsers();
+      const { data } = await supabase.auth.admin.listUsers();
       
-      const emailExists = users?.users.some(user => user.email === email);
+      // Fix: Properly check if the email exists in the users array
+      const emailExists = data?.users && data.users.some(user => user.email === email);
       
       if (emailExists) {
         toast({
@@ -172,7 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Proceed with registration if email not found
-      const { data, error } = await supabase.auth.signUp({
+      const { data: authData, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -193,13 +194,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
-      if (data.user) {
+      if (authData.user) {
         // Store role and any role-specific questions in profiles table
         if (role !== 'admin') { // Admins are assigned manually
           const { error: roleError } = await supabase
             .from('profiles')
             .update({ question_responses: roleQuestions || {} })
-            .eq('id', data.user.id);
+            .eq('id', authData.user.id);
 
           if (roleError) {
             console.error("Error updating profile:", roleError);
@@ -209,7 +210,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const { error: userRoleError } = await supabase
             .from('user_roles')
             .insert({ 
-              user_id: data.user.id, 
+              user_id: authData.user.id, 
               role: role 
             });
 
