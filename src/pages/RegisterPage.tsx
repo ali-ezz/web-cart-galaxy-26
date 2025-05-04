@@ -112,12 +112,15 @@ export default function RegisterPage() {
     }
     
     try {
+      // Ensure the role is properly typed as UserRole
+      const userRole: UserRole = data.role as UserRole;
+      
       // Use the auth context to register the user with properly typed role
       const success = await registerAuth(
         data.name, 
         data.email, 
         data.password,
-        data.role, // This is now properly typed as UserRole
+        userRole, // Now correctly typed as UserRole
         questionResponses
       );
       
@@ -231,7 +234,7 @@ export default function RegisterPage() {
                   <FormItem>
                     <FormLabel>Account Type</FormLabel>
                     <Select 
-                      onValueChange={(value) => {
+                      onValueChange={(value: UserRole) => {
                         handleRoleChange(value);
                         field.onChange(value);
                       }} 
