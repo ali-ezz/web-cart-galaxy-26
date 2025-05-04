@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -11,7 +10,8 @@ import {
   Clock,
   Calendar,
   Settings, 
-  DollarSign
+  DollarSign,
+  Package
 } from 'lucide-react';
 
 export default function DeliveryDashboardPage() {
