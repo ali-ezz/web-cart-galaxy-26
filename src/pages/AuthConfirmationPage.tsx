@@ -18,7 +18,20 @@ export default function AuthConfirmationPage() {
       const token = searchParams.get('token');
       const type = searchParams.get('type');
 
-      if (token && type === 'email_change') {
+      // Handle missing token or type
+      if (!token) {
+        setStatus('error');
+        setMessage('Verification link is invalid. No token provided.');
+        return;
+      }
+
+      if (!type) {
+        setStatus('error');
+        setMessage('Verification link is invalid. No type provided.');
+        return;
+      }
+
+      if (type === 'email_change') {
         try {
           const { error } = await supabase.auth.verifyOtp({
             token_hash: token,
@@ -35,8 +48,9 @@ export default function AuthConfirmationPage() {
         } catch (err) {
           setStatus('error');
           setMessage('An unexpected error occurred.');
+          console.error('Verification error:', err);
         }
-      } else if (token && type === 'signup') {
+      } else if (type === 'signup') {
         try {
           const { error } = await supabase.auth.verifyOtp({
             token_hash: token,
@@ -53,8 +67,9 @@ export default function AuthConfirmationPage() {
         } catch (err) {
           setStatus('error');
           setMessage('An unexpected error occurred.');
+          console.error('Verification error:', err);
         }
-      } else if (token && type === 'recovery') {
+      } else if (type === 'recovery') {
         try {
           // For password recovery links
           const { error } = await supabase.auth.verifyOtp({
@@ -75,10 +90,11 @@ export default function AuthConfirmationPage() {
         } catch (err) {
           setStatus('error');
           setMessage('An unexpected error occurred.');
+          console.error('Verification error:', err);
         }
       } else {
         setStatus('error');
-        setMessage('Invalid verification link.');
+        setMessage(`Invalid verification type: ${type}`);
       }
     };
 

@@ -126,9 +126,11 @@ export default function LoginPage() {
 
         {/* Demo accounts section */}
         <div className="mt-8 p-4 border border-gray-200 rounded-lg bg-gray-50">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">For testing:</h3>
+          <h3 className="text-sm font-medium text-gray-700 mb-2">Admin Login:</h3>
           <div className="text-sm text-gray-600">
-            <p className="mb-1">Create a new account using the Sign Up page or use credentials provided by admin</p>
+            <p className="mb-1">Email: admin@example.com</p>
+            <p className="mb-1">Password: admin123</p>
+            <p className="mt-3 text-xs text-gray-500">Note: For testing only. In production, use secure credentials.</p>
           </div>
         </div>
       </div>

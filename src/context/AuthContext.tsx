@@ -130,11 +130,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data.user) {
         toast({
           title: "Login Successful",
-          description: `Welcome back, ${data.user.user_metadata.name || data.user.email}!`,
+          description: `Welcome back, ${data.user.user_metadata?.name || data.user.email || 'User'}!`,
         });
         
         // Fetch user role after successful login
-        await fetchUserRole(data.user.id);
+        if (data.user.email) {
+          await fetchUserRole(data.user.id);
+        }
         return true;
       }
 
@@ -157,25 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     roleQuestions?: any
   ): Promise<boolean> => {
     try {
-      // First check if this email already exists
-      const { data } = await supabase.auth.admin.listUsers();
-      
-      // Properly type the users array and check if email exists
-      type AdminUserList = { users?: { email?: string }[] };
-      const usersData = data as AdminUserList;
-      
-      const emailExists = usersData?.users && usersData.users.some(user => user.email === email);
-      
-      if (emailExists) {
-        toast({
-          title: "Registration Failed",
-          description: "This email is already registered. Please use a different email or try to log in.",
-          variant: "destructive",
-        });
-        return false;
-      }
-
-      // Proceed with registration if email not found
+      // First register the user
       const { data: authData, error } = await supabase.auth.signUp({
         email,
         password,
@@ -198,18 +182,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (authData.user) {
-        // Store role and any role-specific questions in profiles table
-        if (role !== 'admin') { // Admins are assigned manually
-          const { error: roleError } = await supabase
-            .from('profiles')
-            .update({ question_responses: roleQuestions || {} })
-            .eq('id', authData.user.id);
-
-          if (roleError) {
-            console.error("Error updating profile:", roleError);
-          }
-
-          // Create user role entry with properly typed role value
+        // Create user role entry
+        try {
           const { error: userRoleError } = await supabase
             .from('user_roles')
             .insert({ 
@@ -219,6 +193,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           if (userRoleError) {
             console.error("Error setting user role:", userRoleError);
+          }
+        } catch (roleError: any) {
+          console.error("Error setting user role:", roleError);
+        }
+
+        // Store role-specific questions if provided
+        if (roleQuestions && Object.keys(roleQuestions).length > 0) {
+          try {
+            const { error: profileError } = await supabase
+              .from('profiles')
+              .update({ question_responses: roleQuestions })
+              .eq('id', authData.user.id);
+
+            if (profileError) {
+              console.error("Error updating profile:", profileError);
+            }
+          } catch (profileError: any) {
+            console.error("Error updating profile:", profileError);
           }
         }
 
