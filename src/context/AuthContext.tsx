@@ -21,6 +21,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   loading: boolean;
   userRole: string | null;
+  sendPasswordResetEmail: (email: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -152,6 +153,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     roleQuestions?: any
   ): Promise<boolean> => {
     try {
+      // First check if this email already exists
+      const { data: existingUser, error: checkError } = await supabase.auth.admin
+        .listUsers({
+          filters: {
+            email: email,
+          },
+        });
+      
+      if (existingUser?.users.length > 0) {
+        toast({
+          title: "Registration Failed",
+          description: "This email is already registered. Please use a different email or try to log in.",
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      // Proceed with registration if email not found
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -160,6 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             name,
             role_request: role,
           },
+          emailRedirectTo: window.location.origin + '/auth-confirmation',
         },
       });
 
@@ -183,6 +203,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (roleError) {
             console.error("Error updating profile:", roleError);
           }
+
+          // Create user role entry
+          const { error: userRoleError } = await supabase
+            .from('user_roles')
+            .insert({ user_id: data.user.id, role });
+
+          if (userRoleError) {
+            console.error("Error setting user role:", userRoleError);
+          }
         }
 
         toast({
@@ -196,6 +225,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       toast({
         title: "Registration Failed",
+        description: error.message || "An unexpected error occurred",
+        variant: "destructive",
+      });
+      return false;
+    }
+  };
+
+  const sendPasswordResetEmail = async (email: string): Promise<boolean> => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/auth-confirmation',
+      });
+
+      if (error) {
+        toast({
+          title: "Password Reset Failed",
+          description: error.message,
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      toast({
+        title: "Password Reset Email Sent",
+        description: "Please check your email for password reset instructions.",
+      });
+      return true;
+    } catch (error: any) {
+      toast({
+        title: "Password Reset Failed",
         description: error.message || "An unexpected error occurred",
         variant: "destructive",
       });
@@ -229,7 +288,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logout, 
       isAuthenticated,
       loading,
-      userRole
+      userRole,
+      sendPasswordResetEmail
     }}>
       {children}
     </AuthContext.Provider>

@@ -54,6 +54,28 @@ export default function AuthConfirmationPage() {
           setStatus('error');
           setMessage('An unexpected error occurred.');
         }
+      } else if (token && type === 'recovery') {
+        try {
+          // For password recovery links
+          const { error } = await supabase.auth.verifyOtp({
+            token_hash: token,
+            type: 'recovery',
+          });
+
+          if (error) {
+            setStatus('error');
+            setMessage(error.message);
+          } else {
+            setStatus('success');
+            setMessage('Password reset link verified. You can now set a new password.');
+            // Redirect to a password reset page with the token
+            navigate(`/reset-password?token=${token}`);
+            return;
+          }
+        } catch (err) {
+          setStatus('error');
+          setMessage('An unexpected error occurred.');
+        }
       } else {
         setStatus('error');
         setMessage('Invalid verification link.');
@@ -61,7 +83,7 @@ export default function AuthConfirmationPage() {
     };
 
     confirmEmail();
-  }, [searchParams]);
+  }, [searchParams, navigate]);
 
   return (
     <div className="container mx-auto flex items-center justify-center min-h-[70vh] px-4">
