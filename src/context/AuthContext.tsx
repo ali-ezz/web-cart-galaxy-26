@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Session } from "@supabase/supabase-js";
+import { Database } from "@/integrations/supabase/types";
 
 // Define our own User type to match what we get from Supabase
 interface User {
@@ -12,11 +13,14 @@ interface User {
   role?: string; // Added role
 }
 
+// Extract the user_role type from Database type definition
+type UserRole = Database["public"]["Enums"]["user_role"];
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   login: (email: string, password: string) => Promise<boolean>;
-  register: (name: string, email: string, password: string, role?: string, roleQuestions?: any) => Promise<boolean>;
+  register: (name: string, email: string, password: string, role?: UserRole, roleQuestions?: any) => Promise<boolean>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
   loading: boolean;
@@ -149,19 +153,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     name: string, 
     email: string, 
     password: string, 
-    role: string = 'customer',
+    role: UserRole = 'customer',
     roleQuestions?: any
   ): Promise<boolean> => {
     try {
       // First check if this email already exists
-      const { data: existingUser, error: checkError } = await supabase.auth.admin
-        .listUsers({
-          filters: {
-            email: email,
-          },
-        });
+      const { data: users } = await supabase.auth.admin.listUsers();
       
-      if (existingUser?.users.length > 0) {
+      const emailExists = users?.users.some(user => user.email === email);
+      
+      if (emailExists) {
         toast({
           title: "Registration Failed",
           description: "This email is already registered. Please use a different email or try to log in.",
@@ -204,10 +205,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.error("Error updating profile:", roleError);
           }
 
-          // Create user role entry
+          // Create user role entry with properly typed role value
           const { error: userRoleError } = await supabase
             .from('user_roles')
-            .insert({ user_id: data.user.id, role });
+            .insert({ 
+              user_id: data.user.id, 
+              role: role 
+            });
 
           if (userRoleError) {
             console.error("Error setting user role:", userRoleError);
