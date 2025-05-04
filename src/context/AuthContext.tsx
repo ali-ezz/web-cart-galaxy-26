@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Session } from "@supabase/supabase-js";
+import { Session, User as AuthUser } from "@supabase/supabase-js";
 import { Database } from "@/integrations/supabase/types";
 
 // Define our own User type to match what we get from Supabase
@@ -160,8 +160,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // First check if this email already exists
       const { data } = await supabase.auth.admin.listUsers();
       
-      // Fix: Properly check if the email exists in the users array
-      const emailExists = data?.users && data.users.some(user => user.email === email);
+      // Properly type the users array and check if email exists
+      type AdminUserList = { users?: { email?: string }[] };
+      const usersData = data as AdminUserList;
+      
+      const emailExists = usersData?.users && usersData.users.some(user => user.email === email);
       
       if (emailExists) {
         toast({

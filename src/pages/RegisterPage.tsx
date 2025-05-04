@@ -117,7 +117,7 @@ export default function RegisterPage() {
         data.name, 
         data.email, 
         data.password,
-        data.role,
+        data.role, // This is now properly typed as UserRole
         questionResponses
       );
       
