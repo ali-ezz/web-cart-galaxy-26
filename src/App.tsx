@@ -23,7 +23,8 @@ import CheckoutSuccessPage from "./pages/CheckoutSuccessPage";
 import WishlistPage from "./pages/WishlistPage";
 import NotFound from "./pages/NotFound";
 import AuthConfirmationPage from "./pages/AuthConfirmationPage";
-import AdminDashboardPage from "./pages/AdminDashboardPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import SellerDashboardPage from "./pages/SellerDashboardPage";
 import DeliveryDashboardPage from "./pages/DeliveryDashboardPage";
 
@@ -63,7 +64,8 @@ function DashboardRedirect() {
   
   switch(userRole) {
     case 'admin':
-      return <Navigate to="/admin" replace />;
+      // Admin now redirects to normal account page as requested
+      return <Navigate to="/account" replace />;
     case 'seller':
       return <Navigate to="/seller" replace />;
     case 'delivery':
@@ -93,9 +95,11 @@ const App = () => (
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/auth-confirmation" element={<AuthConfirmationPage />} />
+                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
                 
                 {/* Protected routes */}
-                <Route path="/account" element={
+                <Route path="/account/*" element={
                   <ProtectedRoute>
                     <AccountPage />
                   </ProtectedRoute>
@@ -108,12 +112,7 @@ const App = () => (
                   </ProtectedRoute>
                 } />
                 
-                {/* Admin routes */}
-                <Route path="/admin" element={
-                  <ProtectedRoute allowedRoles={['admin']}>
-                    <AdminDashboardPage />
-                  </ProtectedRoute>
-                } />
+                {/* Removed admin routes as requested */}
                 
                 {/* Seller routes */}
                 <Route path="/seller" element={

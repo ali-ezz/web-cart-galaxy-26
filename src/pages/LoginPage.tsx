@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { AlertCircle } from 'lucide-react';
 
 type LoginFormValues = {
   email: string;
@@ -56,9 +58,11 @@ export default function LoginPage() {
         
         <div className="bg-white rounded-lg shadow-sm p-8">
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6 text-red-600">
-              {error}
-            </div>
+            <Alert variant="destructive" className="mb-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
           
           <Form {...form}>

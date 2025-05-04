@@ -64,9 +64,17 @@ export default {
 					ring: 'hsl(var(--sidebar-ring))'
 				},
                 shop: {
-                    purple: '#9b87f5',
-                    'purple-dark': '#7E69AB',
-                    'purple-light': '#E5DEFF',
+                    // New color palette - changing from purple to teal/blue theme
+                    purple: '#3B82F6', // Changed to blue
+                    'purple-dark': '#2563EB', // Changed to darker blue
+                    'purple-light': '#DBEAFE', // Changed to light blue
+                    teal: '#0EA5E9',
+                    'teal-dark': '#0284C7',
+                    'teal-light': '#BAE6FD',
+                    accent: '#F97316', // Orange accent
+                    'accent-light': '#FFEDD5',
+                    gray: '#64748B',
+                    'gray-light': '#F1F5F9',
                 }
 			},
 			borderRadius: {

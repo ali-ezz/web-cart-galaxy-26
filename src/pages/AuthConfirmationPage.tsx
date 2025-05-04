@@ -4,7 +4,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Check, AlertCircle, MailOpen, Loader2 } from 'lucide-react';
+import { Check, AlertCircle, MailOpen, Loader2, Mail } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export default function AuthConfirmationPage() {
   const [searchParams] = useSearchParams();
@@ -18,16 +19,10 @@ export default function AuthConfirmationPage() {
       const token = searchParams.get('token');
       const type = searchParams.get('type');
 
-      // Handle missing token or type
-      if (!token) {
+      // If no token or type is provided, show the check email page instead of an error
+      if (!token || !type) {
         setStatus('error');
-        setMessage('Verification link is invalid. No token provided.');
-        return;
-      }
-
-      if (!type) {
-        setStatus('error');
-        setMessage('Verification link is invalid. No type provided.');
+        setMessage('Please check your email inbox and spam folder for the verification link.');
         return;
       }
 
@@ -101,6 +96,9 @@ export default function AuthConfirmationPage() {
     confirmEmail();
   }, [searchParams, navigate]);
 
+  // Check if no token or type was provided - show the check email page
+  const noTokenProvided = !searchParams.get('token') || !searchParams.get('type');
+
   return (
     <div className="container mx-auto flex items-center justify-center min-h-[70vh] px-4">
       <Card className="w-full max-w-md p-8 text-center">
@@ -117,7 +115,13 @@ export default function AuthConfirmationPage() {
             </div>
           )}
           
-          {status === 'error' && (
+          {status === 'error' && noTokenProvided && (
+            <div className="mx-auto w-16 h-16 flex items-center justify-center rounded-full bg-blue-50 mb-4">
+              <Mail className="h-8 w-8 text-blue-500" />
+            </div>
+          )}
+          
+          {status === 'error' && !noTokenProvided && (
             <div className="mx-auto w-16 h-16 flex items-center justify-center rounded-full bg-red-50 mb-4">
               <AlertCircle className="h-8 w-8 text-red-500" />
             </div>
@@ -126,7 +130,8 @@ export default function AuthConfirmationPage() {
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
             {status === 'loading' && 'Verifying Your Email'}
             {status === 'success' && 'Email Verified'}
-            {status === 'error' && 'Verification Failed'}
+            {status === 'error' && noTokenProvided && 'Check Your Email'}
+            {status === 'error' && !noTokenProvided && 'Verification Failed'}
           </h2>
           
           <p className="text-gray-600 mb-6">{message}</p>
@@ -142,7 +147,26 @@ export default function AuthConfirmationPage() {
                 </Button>
               )}
               
-              {status === 'error' && (
+              {status === 'error' && noTokenProvided && (
+                <div className="space-y-4">
+                  <Alert className="bg-blue-50 border-blue-200 text-left">
+                    <MailOpen className="h-5 w-5 text-blue-500" />
+                    <AlertTitle className="text-blue-700">Check your email</AlertTitle>
+                    <AlertDescription className="text-blue-600">
+                      We've sent you a verification email. Click the link in the email to verify your account.
+                      Don't forget to check your spam folder.
+                    </AlertDescription>
+                  </Alert>
+                  <Button 
+                    className="w-full" 
+                    onClick={() => navigate('/login')}
+                  >
+                    Return to Sign In
+                  </Button>
+                </div>
+              )}
+              
+              {status === 'error' && !noTokenProvided && (
                 <>
                   <Button 
                     variant="outline" 
