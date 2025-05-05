@@ -218,6 +218,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           title: "Registration Successful",
           description: `Welcome, ${name}! Please check your email to verify your account.`,
         });
+        
+        // Set the user role immediately for a better user experience
+        setUserRole(role);
         return true;
       }
 

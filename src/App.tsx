@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -33,6 +32,7 @@ import AdminDashboardPage from "./pages/AdminDashboardPage";
 import AddProductPage from "./pages/seller/AddProductPage";
 import ProductsPage from "./pages/seller/ProductsPage";
 import EditProductPage from "./pages/seller/EditProductPage";
+import OrdersPage from "./pages/seller/OrdersPage";
 
 // Admin Pages
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
@@ -198,6 +198,12 @@ const App = () => (
                 <Route path="/seller/products/edit/:id" element={
                   <ProtectedRoute allowedRoles={['seller']}>
                     <EditProductPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/seller/orders" element={
+                  <ProtectedRoute allowedRoles={['seller']}>
+                    <OrdersPage />
                   </ProtectedRoute>
                 } />
                 

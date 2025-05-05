@@ -4,20 +4,44 @@ project_id = "lpabxfhmsiadplgqrpym"
 [api]
 enabled = true
 port = 54321
-schemas = ["public", "storage"]
+schemas = ["public", "storage", "graphql_public"]
 
 [db]
 port = 54322
 
-[realtime]
-enabled = true
-
-[functions.delivery_functions]
-verify_jwt = true
-
-[functions.seller_functions]
-verify_jwt = true
-
 [studio]
 enabled = true
 port = 54323
+api_url = "http://127.0.0.1"
+
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+
+[realtime]
+enabled = true
+
+[analytics]
+enabled = false
+
+[vector]
+enabled = false
+
+[edge_functions]
+enabled = true
+
+[experimental.functions.admin_functions]
+verify_jwt = true
+
+[experimental.functions.delivery_functions]
+verify_jwt = true
+
+[experimental.functions.seller_functions]
+verify_jwt = true
