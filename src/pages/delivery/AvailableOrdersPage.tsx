@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -44,12 +45,13 @@ export default function AvailableOrdersPage() {
   const { data: orders, isLoading, error } = useQuery({
     queryKey: ['availableOrders'],
     queryFn: async () => {
-      // Use RPC function to get available orders
-      const { data: availableOrders, error } = await supabase
-        .rpc('get_available_orders');
+      // Use edge function to get available orders
+      const { data, error } = await supabase.functions.invoke('delivery_functions', {
+        body: { action: 'get_available_orders' }
+      });
       
       if (error) throw error;
-      return availableOrders as Order[];
+      return data as Order[];
     },
     enabled: !!user?.id,
   });
@@ -57,12 +59,14 @@ export default function AvailableOrdersPage() {
   // Mutation for accepting an order
   const acceptOrderMutation = useMutation({
     mutationFn: async (orderId: string) => {
-      // Use RPC function to accept an order
-      const { data, error } = await supabase
-        .rpc('accept_delivery_order', { 
+      // Use edge function to accept an order
+      const { data, error } = await supabase.functions.invoke('delivery_functions', {
+        body: { 
+          action: 'accept_delivery_order',
           order_id: orderId,
           delivery_person_id: user!.id
-        });
+        }
+      });
       
       if (error) throw error;
       return data;

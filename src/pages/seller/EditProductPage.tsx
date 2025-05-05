@@ -27,6 +27,18 @@ interface ProductData {
   stock: string;
   category: string;
   image_url: string | null;
+  seller_id?: string;
+}
+
+interface Product extends ProductData {
+  seller_id: string;
+  created_at: string;
+  updated_at: string;
+  price: number;
+  discounted_price: number | null;
+  stock: number;
+  rating: number | null;
+  reviews_count: number | null;
 }
 
 export default function EditProductPage() {
@@ -54,7 +66,7 @@ export default function EditProductPage() {
       
       const { data, error } = await supabase
         .from('products')
-        .select('*')
+        .select('*, seller_id')
         .eq('id', id)
         .single();
       
@@ -65,7 +77,7 @@ export default function EditProductPage() {
         throw new Error("You don't have permission to edit this product");
       }
       
-      return data;
+      return data as Product;
     },
     enabled: !!id && !!user?.id,
     retry: false,

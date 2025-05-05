@@ -44,30 +44,21 @@ export default function DeliveryDashboardPage() {
         .eq('status', 'paid')
         .eq('delivery_status', 'pending')
         .not('id', 'in', (subquery) => 
-          subquery.from('orders')
-            .select('id')
-            .in('id', (subqueryInner) =>
-              subqueryInner.from('orders')
-                .select('id')
-                .in('id', (subqueryDeep) =>
-                  subqueryDeep.rpc('get_assigned_orders')
-                )
-            )
+          subquery.from('delivery_assignments')
+            .select('order_id')
         );
       
       if (availableError) throw availableError;
       
-      // 2. Get assigned orders count for this delivery person
-      const { count: assignedCount, error: assignedError } = await supabase
-        .rpc('count_assigned_deliveries', { delivery_person_id: user.id });
-        
-      if (assignedError) throw assignedError;
+      // Use the edge function to get delivery stats
+      const { data: deliveryStats, error: deliveryError } = await supabase.functions.invoke('delivery_functions', {
+        body: {
+          action: 'get_delivery_stats',
+          delivery_person_id: user.id
+        }
+      });
       
-      // 3. Get completed orders count for this delivery person
-      const { count: completedCount, error: completedError } = await supabase
-        .rpc('count_completed_deliveries', { delivery_person_id: user.id });
-        
-      if (completedError) throw completedError;
+      if (deliveryError) throw deliveryError;
       
       // 4. Get current online status from profile
       const { data: profile, error: profileError } = await supabase
@@ -83,8 +74,8 @@ export default function DeliveryDashboardPage() {
       
       return {
         availableCount: availableOrders?.length || 0,
-        assignedCount: assignedCount || 0,
-        completedCount: completedCount || 0,
+        assignedCount: deliveryStats?.assignedCount || 0,
+        completedCount: deliveryStats?.completedCount || 0,
         status: isOnline ? 'online' : 'offline'
       };
     },

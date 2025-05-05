@@ -1,3 +1,4 @@
+
 import React, { useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -32,9 +33,13 @@ export default function SellerDashboardPage() {
     queryFn: async (): Promise<SellerSummary> => {
       if (!user?.id) return { totalSales: 0, activeProducts: 0, pendingOrders: 0 };
       
-      // Use RPC functions instead of direct queries
-      const { data: salesData, error: salesError } = await supabase
-        .rpc('get_seller_sales', { seller_id: user.id });
+      // Use the seller functions edge function to get data
+      const { data: salesData, error: salesError } = await supabase.functions.invoke('seller_functions', {
+        body: {
+          action: 'get_seller_sales',
+          seller_id: user.id
+        }
+      });
       
       if (salesError) throw salesError;
       
@@ -49,17 +54,19 @@ export default function SellerDashboardPage() {
       if (productsError) throw productsError;
       
       // Get count of pending orders for this seller's products
-      const { data: pendingOrdersData, error: ordersError } = await supabase
-        .rpc('get_seller_pending_orders', { seller_id: user.id });
+      const { data: pendingOrdersData, error: ordersError } = await supabase.functions.invoke('seller_functions', {
+        body: {
+          action: 'get_seller_pending_orders',
+          seller_id: user.id
+        }
+      });
       
       if (ordersError) throw ordersError;
-      
-      const pendingOrders = pendingOrdersData?.count || 0;
       
       return {
         totalSales,
         activeProducts: activeProducts || 0,
-        pendingOrders
+        pendingOrders: pendingOrdersData?.count || 0
       };
     },
     enabled: !!user?.id && userRole === 'seller',

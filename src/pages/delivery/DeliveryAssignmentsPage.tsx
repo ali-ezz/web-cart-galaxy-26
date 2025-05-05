@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -76,11 +77,13 @@ export default function DeliveryAssignmentsPage() {
     queryFn: async () => {
       if (!user?.id) return [];
       
-      // Use RPC function to get assignments
-      const { data, error } = await supabase
-        .rpc('get_delivery_assignments', {
+      // Use the edge function to get assignments
+      const { data, error } = await supabase.functions.invoke('delivery_functions', {
+        body: {
+          action: 'get_delivery_assignments',
           delivery_person_id: user.id
-        });
+        }
+      });
       
       if (error) throw error;
       return data as DeliveryAssignment[];
@@ -91,13 +94,15 @@ export default function DeliveryAssignmentsPage() {
   // Mutation for updating delivery status
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status, notes }: { id: string, status: string, notes: string }) => {
-      // Use RPC function to update status
-      const { data, error } = await supabase
-        .rpc('update_delivery_status', {
+      // Use the edge function to update status
+      const { data, error } = await supabase.functions.invoke('delivery_functions', {
+        body: {
+          action: 'update_delivery_status',
           assignment_id: id,
           new_status: status,
           assignment_notes: notes
-        });
+        }
+      });
       
       if (error) throw error;
       return data;

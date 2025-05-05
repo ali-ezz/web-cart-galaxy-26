@@ -130,6 +130,34 @@ serve(async (req) => {
         result = updatedAssignment;
         break;
 
+      case 'get_delivery_stats':
+        // Get stats for a delivery person
+        const delivery_person_id = data.delivery_person_id;
+        
+        // Count assigned deliveries (not delivered)
+        const { count: assignedCount, error: assignedError } = await supabase
+          .from('delivery_assignments')
+          .select('*', { count: 'exact' })
+          .eq('delivery_person_id', delivery_person_id)
+          .neq('status', 'delivered');
+          
+        if (assignedError) throw assignedError;
+        
+        // Count completed deliveries
+        const { count: completedCount, error: completedError } = await supabase
+          .from('delivery_assignments')
+          .select('*', { count: 'exact' })
+          .eq('delivery_person_id', delivery_person_id)
+          .eq('status', 'delivered');
+          
+        if (completedError) throw completedError;
+        
+        result = { 
+          assignedCount: assignedCount || 0,
+          completedCount: completedCount || 0
+        };
+        break;
+
       default:
         throw new Error(`Unknown action: ${action}`);
     }
