@@ -25,6 +25,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   loading: boolean;
   userRole: string | null;
+  fetchUserRole: (userId: string) => Promise<string | null>;
   sendPasswordResetEmail: (email: string) => Promise<boolean>;
 }
 
@@ -39,8 +40,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
 
   // Function to fetch user role
-  const fetchUserRole = async (userId: string) => {
-    if (!userId) return;
+  const fetchUserRole = async (userId: string): Promise<string | null> => {
+    if (!userId) return null;
     
     try {
       const { data, error } = await supabase
@@ -51,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (error) {
         console.error("Error fetching user role:", error);
-        return;
+        return null;
       }
       
       if (data) {
@@ -72,13 +73,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session?.user) {
           const userData = {
             id: session.user.id,
-            name: session.user.user_metadata.name || 'User',
+            name: session.user.user_metadata?.name || 'User',
             email: session.user.email || '',
           };
           setUser(userData);
           setIsAuthenticated(true);
           
-          // Fetch role with setTimeout to avoid recursive calls
+          // Defer role fetching to avoid recursive state updates
           setTimeout(() => {
             fetchUserRole(session.user.id);
           }, 0);
@@ -96,7 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (session?.user) {
         const userData = {
           id: session.user.id,
-          name: session.user.user_metadata.name || 'User',
+          name: session.user.user_metadata?.name || 'User',
           email: session.user.email || '',
         };
         setUser(userData);
@@ -113,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
+      setLoading(true);
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -133,10 +135,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           description: `Welcome back, ${data.user.user_metadata?.name || data.user.email || 'User'}!`,
         });
         
-        // Fetch user role after successful login
-        if (data.user.email) {
-          await fetchUserRole(data.user.id);
-        }
         return true;
       }
 
@@ -148,6 +146,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         variant: "destructive",
       });
       return false;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -159,6 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     roleQuestions?: any
   ): Promise<boolean> => {
     try {
+      setLoading(true);
       // First register the user
       const { data: authData, error } = await supabase.auth.signUp({
         email,
@@ -232,11 +233,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         variant: "destructive",
       });
       return false;
+    } finally {
+      setLoading(false);
     }
   };
 
   const sendPasswordResetEmail = async (email: string): Promise<boolean> => {
     try {
+      setLoading(true);
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin + '/auth-confirmation',
       });
@@ -262,11 +266,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         variant: "destructive",
       });
       return false;
+    } finally {
+      setLoading(false);
     }
   };
 
   const logout = async () => {
     try {
+      setLoading(true);
       await supabase.auth.signOut();
       
       toast({
@@ -279,6 +286,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         description: error.message || "An unexpected error occurred",
         variant: "destructive",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -292,6 +301,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated,
       loading,
       userRole,
+      fetchUserRole,
       sendPasswordResetEmail
     }}>
       {children}

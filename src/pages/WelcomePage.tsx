@@ -3,39 +3,87 @@ import { useAuth } from "@/context/AuthContext";
 import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { User, ShoppingBag, Truck, Settings } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function WelcomePage() {
-  const { user, userRole, loading } = useAuth();
+  const { user, userRole, loading, fetchUserRole } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const [isRedirecting, setIsRedirecting] = useState(false);
   
   useEffect(() => {
-    if (!loading && userRole) {
-      switch(userRole) {
-        case 'admin':
-          navigate('/admin');
-          break;
-        case 'seller':
-          navigate('/seller');
-          break;
-        case 'delivery':
-          navigate('/delivery');
-          break;
-        case 'customer':
-          navigate('/');
-          break;
-        default:
-          // Stay on welcome page
-          break;
-      }
+    // If the user is logged in but we don't have their role yet, fetch it
+    if (user && !userRole && !loading) {
+      fetchUserRole(user.id);
     }
-  }, [userRole, loading, navigate]);
+    
+    // Handle redirection based on user role once loaded
+    if (!loading && user && userRole) {
+      setIsRedirecting(true);
+      
+      const timer = setTimeout(() => {
+        switch(userRole) {
+          case 'admin':
+            navigate('/admin');
+            break;
+          case 'seller':
+            navigate('/seller');
+            break;
+          case 'delivery':
+            navigate('/delivery');
+            break;
+          case 'customer':
+            navigate('/');
+            break;
+          default:
+            // If no valid role, show toast and stay on welcome page
+            toast({
+              title: "Role not recognized",
+              description: "Your account doesn't have a valid role assigned.",
+              variant: "destructive"
+            });
+            setIsRedirecting(false);
+            break;
+        }
+      }, 500); // Small delay to avoid immediate redirects
+      
+      return () => clearTimeout(timer);
+    }
+  }, [userRole, loading, navigate, user, toast, fetchUserRole]);
   
-  if (loading || !user) {
+  if (loading || isRedirecting) {
     return (
-      <div className="container mx-auto p-8 flex justify-center">
-        <div className="w-8 h-8 border-4 border-shop-purple border-t-transparent rounded-full animate-spin"></div>
+      <div className="container mx-auto p-8 flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="w-8 h-8 border-4 border-shop-purple border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-gray-600">
+          {loading ? "Checking your account..." : "Redirecting to your dashboard..."}
+        </p>
+      </div>
+    );
+  }
+  
+  if (!user) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-2xl mx-auto">
+          <Card className="p-6 md:p-8">
+            <div className="text-center mb-6">
+              <h1 className="text-3xl font-bold mb-2">Welcome to Our Platform</h1>
+              <p className="text-gray-600">Please sign in to continue.</p>
+            </div>
+            
+            <div className="flex justify-center space-x-4">
+              <Button onClick={() => navigate('/login')} className="mx-2">
+                Sign In
+              </Button>
+              <Button onClick={() => navigate('/register')} variant="outline" className="mx-2">
+                Register
+              </Button>
+            </div>
+          </Card>
+        </div>
       </div>
     );
   }
@@ -51,7 +99,13 @@ export default function WelcomePage() {
           
           <div className="space-y-4 mb-8">
             <p className="text-center">
-              Your account is set up as a <span className="font-medium text-shop-purple">{userRole}</span> account.
+              {userRole ? (
+                <span>
+                  Your account is set up as a <span className="font-medium text-shop-purple">{userRole}</span> account.
+                </span>
+              ) : (
+                <span>We're checking your account role...</span>
+              )}
             </p>
             
             <div className="flex justify-center">

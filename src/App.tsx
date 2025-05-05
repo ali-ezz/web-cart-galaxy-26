@@ -1,3 +1,4 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -27,6 +28,7 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 import SellerDashboardPage from "./pages/SellerDashboardPage";
 import DeliveryDashboardPage from "./pages/DeliveryDashboardPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
+import WelcomePage from "./pages/WelcomePage";
 
 // Seller Pages
 import AddProductPage from "./pages/seller/AddProductPage";
@@ -50,7 +52,14 @@ import DeliverySchedulePage from "./pages/delivery/DeliverySchedulePage";
 import DeliveryEarningsPage from "./pages/delivery/DeliveryEarningsPage";
 import DeliverySettingsPage from "./pages/delivery/DeliverySettingsPage";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60 * 1000, // 1 minute
+      retry: 1,
+    },
+  },
+});
 
 // Protected Route Component
 interface ProtectedRouteProps {
@@ -62,38 +71,43 @@ interface ProtectedRouteProps {
 function ProtectedRoute({ children, allowedRoles, redirectPath = '/login' }: ProtectedRouteProps) {
   const { isAuthenticated, userRole, loading } = useAuth();
   
-  // Show nothing while loading
+  // Show loading state while checking auth
   if (loading) {
-    return null;
+    return (
+      <div className="container mx-auto p-8 flex justify-center">
+        <div className="w-8 h-8 border-4 border-shop-purple border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
   }
   
   // Check authentication
   if (!isAuthenticated) {
-    return <Navigate to={redirectPath} replace />;
+    return <Navigate to={redirectPath} replace state={{ from: window.location.pathname }} />;
   }
   
   // Check role if specified
   if (allowedRoles && userRole && !allowedRoles.includes(userRole)) {
-    return <Navigate to="/account" replace />;
+    return <Navigate to="/welcome" replace />;
   }
   
   return <>{children}</>;
 }
 
-// Role-specific dashboard selector
-function DashboardRedirect() {
-  const { userRole } = useAuth();
+// Customer-only route - redirects other user types to their dashboard
+function CustomerRoute({ children }: { children: React.ReactNode }) {
+  const { userRole, isAuthenticated, loading } = useAuth();
   
-  switch(userRole) {
-    case 'admin':
-      return <Navigate to="/admin" replace />;
-    case 'seller':
-      return <Navigate to="/seller" replace />;
-    case 'delivery':
-      return <Navigate to="/delivery" replace />;
-    default:
-      return <Navigate to="/account" replace />;
+  // Show nothing while loading
+  if (loading) {
+    return null;
   }
+  
+  // If user is authenticated and not a customer, redirect to welcome page
+  if (isAuthenticated && userRole && userRole !== 'customer') {
+    return <Navigate to="/welcome" replace />;
+  }
+  
+  return <>{children}</>;
 }
 
 const App = () => (
@@ -107,29 +121,55 @@ const App = () => (
             <Header />
             <main className="min-h-screen pt-4">
               <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/product/:id" element={<ProductPage />} />
-                <Route path="/category/:category" element={<CategoryPage />} />
-                <Route path="/search" element={<SearchPage />} />
-                <Route path="/cart" element={<CartPage />} />
-                <Route path="/wishlist" element={<WishlistPage />} />
+                {/* Public routes - accessible to everyone */}
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/auth-confirmation" element={<AuthConfirmationPage />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
+                <Route path="/welcome" element={<WelcomePage />} />
+
+                {/* Customer routes - home page is for customers only */}
+                <Route path="/" element={
+                  <CustomerRoute>
+                    <Home />
+                  </CustomerRoute>
+                } />
+                <Route path="/product/:id" element={
+                  <CustomerRoute>
+                    <ProductPage />
+                  </CustomerRoute>
+                } />
+                <Route path="/category/:category" element={
+                  <CustomerRoute>
+                    <CategoryPage />
+                  </CustomerRoute>
+                } />
+                <Route path="/search" element={
+                  <CustomerRoute>
+                    <SearchPage />
+                  </CustomerRoute>
+                } />
+                <Route path="/cart" element={
+                  <CustomerRoute>
+                    <CartPage />
+                  </CustomerRoute>
+                } />
+                <Route path="/wishlist" element={
+                  <CustomerRoute>
+                    <WishlistPage />
+                  </CustomerRoute>
+                } />
+                <Route path="/checkout-success" element={
+                  <CustomerRoute>
+                    <CheckoutSuccessPage />
+                  </CustomerRoute>
+                } />
                 
-                {/* Protected routes */}
+                {/* Protected routes - require authentication */}
                 <Route path="/account/*" element={
                   <ProtectedRoute>
                     <AccountPage />
-                  </ProtectedRoute>
-                } />
-                
-                {/* Role-based dashboard redirect */}
-                <Route path="/dashboard" element={
-                  <ProtectedRoute>
-                    <DashboardRedirect />
                   </ProtectedRoute>
                 } />
                 
@@ -250,8 +290,7 @@ const App = () => (
                   </ProtectedRoute>
                 } />
                 
-                <Route path="/checkout-success" element={<CheckoutSuccessPage />} />
-                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                {/* 404 catch-all */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </main>

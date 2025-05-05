@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -15,15 +15,22 @@ type LoginFormValues = {
 };
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, isAuthenticated, userRole } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
-  const from = location.state?.from || '/';
+  const from = location.state?.from || '/welcome';
   
   const form = useForm<LoginFormValues>();
+  
+  // Check if user is already authenticated, redirect to appropriate page
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/welcome');
+    }
+  }, [isAuthenticated, navigate, userRole]);
   
   const onSubmit = async (data: LoginFormValues) => {
     setLoading(true);
@@ -34,7 +41,7 @@ export default function LoginPage() {
       const success = await login(data.email, data.password);
       
       if (success) {
-        navigate(from);
+        navigate('/welcome');
       } else {
         setError('Invalid email or password');
       }
