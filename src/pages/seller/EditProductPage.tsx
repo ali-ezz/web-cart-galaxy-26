@@ -79,6 +79,10 @@ export default function EditProductPage() {
       if (error) throw error;
       
       // Check if the current user is the seller
+      if (!data.seller_id) {
+        throw new Error("This product doesn't have an assigned seller");
+      }
+      
       if (data.seller_id !== user?.id) {
         throw new Error("You don't have permission to edit this product");
       }
@@ -122,10 +126,19 @@ export default function EditProductPage() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setProductData({
-      ...productData,
-      [name]: value,
-    });
+    
+    // Convert numeric inputs to numbers
+    if (name === 'price' || name === 'discounted_price' || name === 'stock') {
+      setProductData({
+        ...productData,
+        [name]: value === '' ? (name === 'discounted_price' ? null : 0) : Number(value),
+      });
+    } else {
+      setProductData({
+        ...productData,
+        [name]: value,
+      });
+    }
   };
 
   const handleCategoryChange = (value: string) => {
@@ -150,33 +163,32 @@ export default function EditProductPage() {
     try {
       setIsSubmitting(true);
       
-      // Convert numeric strings to numbers
-      const numericPrice = parseFloat(productData.price);
-      const numericDiscountedPrice = productData.discounted_price 
-        ? parseFloat(productData.discounted_price) 
-        : null;
-      const numericStock = parseInt(productData.stock, 10);
-      
-      if (isNaN(numericPrice) || numericPrice <= 0) {
-        throw new Error("Price must be a valid positive number");
+      // Input validation
+      if (!productData.name || productData.name.trim() === '') {
+        throw new Error("Product name is required");
       }
       
-      if (numericDiscountedPrice !== null && (isNaN(numericDiscountedPrice) || numericDiscountedPrice <= 0)) {
-        throw new Error("Discounted price must be a valid positive number");
+      if (productData.price <= 0) {
+        throw new Error("Price must be a positive number");
       }
       
-      if (isNaN(numericStock) || numericStock < 0) {
-        throw new Error("Stock must be a valid non-negative number");
+      if (productData.discounted_price !== null && productData.discounted_price <= 0) {
+        throw new Error("Discounted price must be a positive number");
       }
       
+      if (productData.stock < 0) {
+        throw new Error("Stock cannot be negative");
+      }
+      
+      // Update product - make sure to convert the numeric values to the appropriate types
       const { data, error } = await supabase
         .from('products')
         .update({
           name: productData.name,
           description: productData.description,
-          price: numericPrice,
-          discounted_price: numericDiscountedPrice,
-          stock: numericStock,
+          price: productData.price,
+          discounted_price: productData.discounted_price,
+          stock: productData.stock,
           category: productData.category,
           image_url: productData.image_url,
           updated_at: new Date().toISOString(),
