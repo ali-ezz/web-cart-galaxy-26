@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -45,16 +44,9 @@ export default function AvailableOrdersPage() {
   const { data: orders, isLoading, error } = useQuery({
     queryKey: ['availableOrders'],
     queryFn: async () => {
-      // Get orders that are not in delivery_assignments
+      // Use RPC function to get available orders
       const { data: availableOrders, error } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('status', 'paid')
-        .eq('delivery_status', 'pending')
-        .not('id', 'in', (subquery) => 
-          subquery.from('delivery_assignments').select('order_id')
-        )
-        .order('created_at', { ascending: false });
+        .rpc('get_available_orders');
       
       if (error) throw error;
       return availableOrders as Order[];
@@ -65,27 +57,14 @@ export default function AvailableOrdersPage() {
   // Mutation for accepting an order
   const acceptOrderMutation = useMutation({
     mutationFn: async (orderId: string) => {
-      // Create a delivery assignment record
+      // Use RPC function to accept an order
       const { data, error } = await supabase
-        .from('delivery_assignments')
-        .insert({
+        .rpc('accept_delivery_order', { 
           order_id: orderId,
-          delivery_person_id: user!.id,
-          status: 'assigned',
-        })
-        .select()
-        .single();
+          delivery_person_id: user!.id
+        });
       
       if (error) throw error;
-      
-      // Update the order status
-      await supabase
-        .from('orders')
-        .update({
-          delivery_status: 'assigned'
-        })
-        .eq('id', orderId);
-        
       return data;
     },
     onSuccess: () => {

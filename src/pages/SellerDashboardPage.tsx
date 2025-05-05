@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -33,23 +32,15 @@ export default function SellerDashboardPage() {
     queryFn: async (): Promise<SellerSummary> => {
       if (!user?.id) return { totalSales: 0, activeProducts: 0, pendingOrders: 0 };
       
-      // 1. Get total sales (completed orders containing products by this seller)
+      // Use RPC functions instead of direct queries
       const { data: salesData, error: salesError } = await supabase
-        .from('order_items')
-        .select(`
-          price,
-          quantity,
-          product:products(seller_id)
-        `)
-        .eq('product.seller_id', user.id);
+        .rpc('get_seller_sales', { seller_id: user.id });
       
       if (salesError) throw salesError;
       
-      const totalSales = salesData?.reduce((total, item) => {
-        return total + (item.price * item.quantity);
-      }, 0) || 0;
+      const totalSales = salesData?.total || 0;
       
-      // 2. Get count of active products by this seller
+      // Get count of active products by this seller
       const { count: activeProducts, error: productsError } = await supabase
         .from('products')
         .select('*', { count: 'exact' })
@@ -57,31 +48,18 @@ export default function SellerDashboardPage() {
       
       if (productsError) throw productsError;
       
-      // 3. Get count of pending orders containing this seller's products
+      // Get count of pending orders for this seller's products
       const { data: pendingOrdersData, error: ordersError } = await supabase
-        .from('order_items')
-        .select(`
-          id,
-          order:orders(status),
-          product:products(seller_id)
-        `)
-        .eq('product.seller_id', user.id)
-        .eq('order.status', 'paid');
+        .rpc('get_seller_pending_orders', { seller_id: user.id });
       
       if (ordersError) throw ordersError;
       
-      // Count unique order IDs
-      const uniqueOrderIds = new Set();
-      pendingOrdersData?.forEach(item => {
-        if (item.order && item.order.status === 'paid') {
-          uniqueOrderIds.add(item.order.id);
-        }
-      });
+      const pendingOrders = pendingOrdersData?.count || 0;
       
       return {
         totalSales,
         activeProducts: activeProducts || 0,
-        pendingOrders: uniqueOrderIds.size
+        pendingOrders
       };
     },
     enabled: !!user?.id && userRole === 'seller',

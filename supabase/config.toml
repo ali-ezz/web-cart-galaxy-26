@@ -1,1 +1,23 @@
+
 project_id = "lpabxfhmsiadplgqrpym"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage"]
+
+[db]
+port = 54322
+
+[realtime]
+enabled = true
+
+[functions.delivery_functions]
+verify_jwt = true
+
+[functions.seller_functions]
+verify_jwt = true
+
+[studio]
+enabled = true
+port = 54323

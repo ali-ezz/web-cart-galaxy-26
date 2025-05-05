@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -77,14 +76,11 @@ export default function DeliveryAssignmentsPage() {
     queryFn: async () => {
       if (!user?.id) return [];
       
+      // Use RPC function to get assignments
       const { data, error } = await supabase
-        .from('delivery_assignments')
-        .select(`
-          *,
-          order:orders(*)
-        `)
-        .eq('delivery_person_id', user.id)
-        .order('assigned_at', { ascending: false });
+        .rpc('get_delivery_assignments', {
+          delivery_person_id: user.id
+        });
       
       if (error) throw error;
       return data as DeliveryAssignment[];
@@ -95,43 +91,15 @@ export default function DeliveryAssignmentsPage() {
   // Mutation for updating delivery status
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status, notes }: { id: string, status: string, notes: string }) => {
-      const updates: any = { status };
-      
-      if (status === 'delivered') {
-        updates.delivered_at = new Date().toISOString();
-      }
-      
-      if (notes) {
-        updates.notes = notes;
-      }
-      
-      // Update the delivery assignment
+      // Use RPC function to update status
       const { data, error } = await supabase
-        .from('delivery_assignments')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
+        .rpc('update_delivery_status', {
+          assignment_id: id,
+          new_status: status,
+          assignment_notes: notes
+        });
       
       if (error) throw error;
-      
-      // If delivered, update the order status as well
-      if (status === 'delivered') {
-        await supabase
-          .from('orders')
-          .update({ 
-            delivery_status: 'delivered',
-            status: 'completed'
-          })
-          .eq('id', data.order_id);
-      } else {
-        // For other statuses, update only the delivery_status
-        await supabase
-          .from('orders')
-          .update({ delivery_status: status })
-          .eq('id', data.order_id);
-      }
-      
       return data;
     },
     onSuccess: () => {

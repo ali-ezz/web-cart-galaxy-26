@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -45,26 +44,28 @@ export default function DeliveryDashboardPage() {
         .eq('status', 'paid')
         .eq('delivery_status', 'pending')
         .not('id', 'in', (subquery) => 
-          subquery.from('delivery_assignments').select('order_id')
+          subquery.from('orders')
+            .select('id')
+            .in('id', (subqueryInner) =>
+              subqueryInner.from('orders')
+                .select('id')
+                .in('id', (subqueryDeep) =>
+                  subqueryDeep.rpc('get_assigned_orders')
+                )
+            )
         );
       
       if (availableError) throw availableError;
       
       // 2. Get assigned orders count for this delivery person
-      const { data: assignedOrders, error: assignedError } = await supabase
-        .from('delivery_assignments')
-        .select('id', { count: 'exact' })
-        .eq('delivery_person_id', user.id)
-        .in('status', ['assigned', 'in_transit']);
+      const { count: assignedCount, error: assignedError } = await supabase
+        .rpc('count_assigned_deliveries', { delivery_person_id: user.id });
         
       if (assignedError) throw assignedError;
       
       // 3. Get completed orders count for this delivery person
-      const { data: completedOrders, error: completedError } = await supabase
-        .from('delivery_assignments')
-        .select('id', { count: 'exact' })
-        .eq('delivery_person_id', user.id)
-        .eq('status', 'delivered');
+      const { count: completedCount, error: completedError } = await supabase
+        .rpc('count_completed_deliveries', { delivery_person_id: user.id });
         
       if (completedError) throw completedError;
       
@@ -82,8 +83,8 @@ export default function DeliveryDashboardPage() {
       
       return {
         availableCount: availableOrders?.length || 0,
-        assignedCount: assignedOrders?.length || 0,
-        completedCount: completedOrders?.length || 0,
+        assignedCount: assignedCount || 0,
+        completedCount: completedCount || 0,
         status: isOnline ? 'online' : 'offline'
       };
     },
