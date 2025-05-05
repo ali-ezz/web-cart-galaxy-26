@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -61,6 +62,14 @@ interface DeliverySettings {
   delivery_notes: string;
 }
 
+// Type for the question_responses JSON field
+interface QuestionResponses {
+  vehicle_type?: string;
+  vehicle_info?: string;
+  delivery_radius?: string;
+  delivery_notes?: string;
+}
+
 export default function DeliverySettingsPage() {
   const { user, userRole } = useAuth();
   const navigate = useNavigate();
@@ -102,17 +111,23 @@ export default function DeliverySettingsPage() {
         if (error) throw error;
         
         if (data) {
-          // Extract profile data
-          const settings = {
+          // Parse question_responses to ensure it's an object
+          const questionResponses: QuestionResponses = 
+            typeof data.question_responses === 'string' 
+              ? JSON.parse(data.question_responses) 
+              : (data.question_responses as QuestionResponses || {});
+          
+          // Extract profile data with proper type checking
+          const settings: DeliverySettings = {
             phone: data.phone || '',
             address: data.address || '',
             city: data.city || '',
             state: data.state || '',
             postal_code: data.postal_code || '',
-            vehicle_type: data.question_responses?.vehicle_type || 'car',
-            vehicle_info: data.question_responses?.vehicle_info || '',
-            delivery_radius: data.question_responses?.delivery_radius || '10',
-            delivery_notes: data.question_responses?.delivery_notes || ''
+            vehicle_type: questionResponses?.vehicle_type || 'car',
+            vehicle_info: questionResponses?.vehicle_info || '',
+            delivery_radius: questionResponses?.delivery_radius || '10',
+            delivery_notes: questionResponses?.delivery_notes || ''
           };
           
           form.reset(settings);
