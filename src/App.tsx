@@ -27,15 +27,28 @@ import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import SellerDashboardPage from "./pages/SellerDashboardPage";
 import DeliveryDashboardPage from "./pages/DeliveryDashboardPage";
+import AdminDashboardPage from "./pages/AdminDashboardPage";
 
 // Seller Pages
 import AddProductPage from "./pages/seller/AddProductPage";
 import ProductsPage from "./pages/seller/ProductsPage";
 import EditProductPage from "./pages/seller/EditProductPage";
 
+// Admin Pages
+import AdminUsersPage from "./pages/admin/AdminUsersPage";
+import AdminProductsPage from "./pages/admin/AdminProductsPage";
+import AdminOrdersPage from "./pages/admin/AdminOrdersPage";
+import AdminAnalyticsPage from "./pages/admin/AdminAnalyticsPage";
+import AdminApplicationsPage from "./pages/admin/AdminApplicationsPage";
+import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
+
 // Delivery Pages
 import AvailableOrdersPage from "./pages/delivery/AvailableOrdersPage";
 import DeliveryAssignmentsPage from "./pages/delivery/DeliveryAssignmentsPage";
+import DeliveryRoutesPage from "./pages/delivery/DeliveryRoutesPage";
+import DeliverySchedulePage from "./pages/delivery/DeliverySchedulePage";
+import DeliveryEarningsPage from "./pages/delivery/DeliveryEarningsPage";
+import DeliverySettingsPage from "./pages/delivery/DeliverySettingsPage";
 
 const queryClient = new QueryClient();
 
@@ -73,8 +86,7 @@ function DashboardRedirect() {
   
   switch(userRole) {
     case 'admin':
-      // Admin now redirects to normal account page as requested
-      return <Navigate to="/account" replace />;
+      return <Navigate to="/admin" replace />;
     case 'seller':
       return <Navigate to="/seller" replace />;
     case 'delivery':
@@ -121,7 +133,48 @@ const App = () => (
                   </ProtectedRoute>
                 } />
                 
-                {/* Removed admin routes as requested */}
+                {/* Admin routes */}
+                <Route path="/admin" element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminDashboardPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/admin/users" element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminUsersPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/admin/products" element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminProductsPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/admin/orders" element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminOrdersPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/admin/analytics" element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminAnalyticsPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/admin/applications" element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminApplicationsPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/admin/settings" element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminSettingsPage />
+                  </ProtectedRoute>
+                } />
                 
                 {/* Seller routes */}
                 <Route path="/seller" element={
@@ -164,6 +217,30 @@ const App = () => (
                 <Route path="/delivery/assignments" element={
                   <ProtectedRoute allowedRoles={['delivery']}>
                     <DeliveryAssignmentsPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/delivery/routes" element={
+                  <ProtectedRoute allowedRoles={['delivery']}>
+                    <DeliveryRoutesPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/delivery/schedule" element={
+                  <ProtectedRoute allowedRoles={['delivery']}>
+                    <DeliverySchedulePage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/delivery/earnings" element={
+                  <ProtectedRoute allowedRoles={['delivery']}>
+                    <DeliveryEarningsPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/delivery/settings" element={
+                  <ProtectedRoute allowedRoles={['delivery']}>
+                    <DeliverySettingsPage />
                   </ProtectedRoute>
                 } />
                 
