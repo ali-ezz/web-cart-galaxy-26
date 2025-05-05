@@ -28,6 +28,15 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 import SellerDashboardPage from "./pages/SellerDashboardPage";
 import DeliveryDashboardPage from "./pages/DeliveryDashboardPage";
 
+// Seller Pages
+import AddProductPage from "./pages/seller/AddProductPage";
+import ProductsPage from "./pages/seller/ProductsPage";
+import EditProductPage from "./pages/seller/EditProductPage";
+
+// Delivery Pages
+import AvailableOrdersPage from "./pages/delivery/AvailableOrdersPage";
+import DeliveryAssignmentsPage from "./pages/delivery/DeliveryAssignmentsPage";
+
 const queryClient = new QueryClient();
 
 // Protected Route Component
@@ -121,10 +130,40 @@ const App = () => (
                   </ProtectedRoute>
                 } />
                 
+                <Route path="/seller/products" element={
+                  <ProtectedRoute allowedRoles={['seller']}>
+                    <ProductsPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/seller/products/new" element={
+                  <ProtectedRoute allowedRoles={['seller']}>
+                    <AddProductPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/seller/products/edit/:id" element={
+                  <ProtectedRoute allowedRoles={['seller']}>
+                    <EditProductPage />
+                  </ProtectedRoute>
+                } />
+                
                 {/* Delivery routes */}
                 <Route path="/delivery" element={
                   <ProtectedRoute allowedRoles={['delivery']}>
                     <DeliveryDashboardPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/delivery/available" element={
+                  <ProtectedRoute allowedRoles={['delivery']}>
+                    <AvailableOrdersPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/delivery/assignments" element={
+                  <ProtectedRoute allowedRoles={['delivery']}>
+                    <DeliveryAssignmentsPage />
                   </ProtectedRoute>
                 } />
                 
