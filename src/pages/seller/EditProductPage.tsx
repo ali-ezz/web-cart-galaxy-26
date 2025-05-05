@@ -22,21 +22,27 @@ interface ProductData {
   id?: string;
   name: string;
   description: string | null;
-  price: string;
-  discounted_price: string;
-  stock: string;
+  price: number;
+  discounted_price: number | null;
+  stock: number;
   category: string;
   image_url: string | null;
   seller_id?: string;
 }
 
-interface Product extends ProductData {
-  seller_id: string;
-  created_at: string;
-  updated_at: string;
+// Complete product interface with all database fields
+interface Product {
+  id: string;
+  name: string;
+  description: string | null;
   price: number;
   discounted_price: number | null;
   stock: number;
+  category: string;
+  image_url: string | null;
+  seller_id: string;
+  created_at: string;
+  updated_at: string;
   rating: number | null;
   reviews_count: number | null;
 }
@@ -51,9 +57,9 @@ export default function EditProductPage() {
   const [productData, setProductData] = useState<ProductData>({
     name: '',
     description: '',
-    price: '',
-    discounted_price: '',
-    stock: '',
+    price: 0,
+    discounted_price: null,
+    stock: 0,
     category: '',
     image_url: '',
   });
@@ -66,7 +72,7 @@ export default function EditProductPage() {
       
       const { data, error } = await supabase
         .from('products')
-        .select('*, seller_id')
+        .select('*')
         .eq('id', id)
         .single();
       
@@ -104,11 +110,12 @@ export default function EditProductPage() {
         id: product.id,
         name: product.name || '',
         description: product.description || '',
-        price: product.price.toString(),
-        discounted_price: product.discounted_price ? product.discounted_price.toString() : '',
-        stock: product.stock.toString(),
+        price: product.price,
+        discounted_price: product.discounted_price,
+        stock: product.stock,
         category: product.category || '',
         image_url: product.image_url || '',
+        seller_id: product.seller_id,
       });
     }
   }, [product]);

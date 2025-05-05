@@ -23,6 +23,16 @@ interface SellerSummary {
   pendingOrders: number;
 }
 
+// Type for the response from the edge function
+interface SellerSalesResponse {
+  total: number;
+}
+
+// Type for the pending orders response
+interface PendingOrdersResponse {
+  count: number;
+}
+
 export default function SellerDashboardPage() {
   const { user, userRole } = useAuth();
   const navigate = useNavigate();
@@ -34,7 +44,7 @@ export default function SellerDashboardPage() {
       if (!user?.id) return { totalSales: 0, activeProducts: 0, pendingOrders: 0 };
       
       // Use the seller functions edge function to get data
-      const { data: salesData, error: salesError } = await supabase.functions.invoke('seller_functions', {
+      const { data: salesData, error: salesError } = await supabase.functions.invoke<SellerSalesResponse>('seller_functions', {
         body: {
           action: 'get_seller_sales',
           seller_id: user.id
@@ -54,7 +64,7 @@ export default function SellerDashboardPage() {
       if (productsError) throw productsError;
       
       // Get count of pending orders for this seller's products
-      const { data: pendingOrdersData, error: ordersError } = await supabase.functions.invoke('seller_functions', {
+      const { data: pendingOrdersData, error: ordersError } = await supabase.functions.invoke<PendingOrdersResponse>('seller_functions', {
         body: {
           action: 'get_seller_pending_orders',
           seller_id: user.id
