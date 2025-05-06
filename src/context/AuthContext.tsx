@@ -315,7 +315,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             toast({
               title: "Warning",
               description: "Account created but role could not be set. Default role will be used.",
-              variant: "warning",
+              variant: "default",
             });
           }
         } catch (roleError: any) {
