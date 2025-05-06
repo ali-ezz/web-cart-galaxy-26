@@ -25,12 +25,25 @@ export default function WelcomePage() {
         .eq('user_id', user.id)
         .maybeSingle();
       
-      if (error) {
+      if (error && error.code !== 'PGRST116') {
         console.error("Error verifying user:", error);
         return false;
       }
       
-      return !!data;
+      if (!data) {
+        console.log("Creating default role for user");
+        // Create default role
+        const { error: insertError } = await supabase
+          .from('user_roles')
+          .insert({ user_id: user.id, role: 'customer' });
+          
+        if (insertError) {
+          console.error("Error creating default role:", insertError);
+          return false;
+        }
+      }
+      
+      return true;
     } catch (err) {
       console.error("Exception verifying user:", err);
       return false;
@@ -46,7 +59,7 @@ export default function WelcomePage() {
     // Verify user exists in database
     const userExists = await verifyUserExists();
     if (!userExists) {
-      console.warn("User not found in database, redirecting to login");
+      console.warn("User validation failed, redirecting to login");
       await supabase.auth.signOut();
       navigate("/login");
       return;

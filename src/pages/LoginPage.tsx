@@ -41,7 +41,11 @@ export default function LoginPage() {
   useEffect(() => {
     const verifySession = async () => {
       try {
+        // Clear any existing errors
+        setError('');
+        
         const { data, error } = await supabase.auth.getSession();
+        
         if (data.session) {
           // Verify user exists in database
           const { data: userData, error: userError } = await supabase
@@ -50,9 +54,20 @@ export default function LoginPage() {
             .eq('user_id', data.session.user.id)
             .maybeSingle();
           
-          if (userError || !userData) {
-            console.warn("User found in session but not in database. Signing out.");
+          if (userError && userError.code !== 'PGRST116') {
+            console.warn("Error verifying user in database:", userError);
             await supabase.auth.signOut();
+          } else if (!userData) {
+            console.log("Creating default role for user");
+            // User doesn't have a role yet, create one
+            const { error: insertError } = await supabase
+              .from('user_roles')
+              .insert({ user_id: data.session.user.id, role: 'customer' });
+              
+            if (insertError) {
+              console.error("Error creating default role:", insertError);
+              await supabase.auth.signOut();
+            }
           }
         }
       } catch (err) {

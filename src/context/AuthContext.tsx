@@ -49,27 +49,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log(`Fetching role for user: ${userId}`);
       
-      // First verify the user exists in auth.users
-      const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);
-      
-      if (userError || !userData) {
-        console.error("User does not exist:", userError);
-        // Force logout if user doesn't exist in auth system
-        await supabase.auth.signOut();
-        setUser(null);
-        setSession(null);
-        setIsAuthenticated(false);
-        setUserRole(null);
-        return null;
-      }
-      
+      // First check if user exists in user_roles table
       const { data, error } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
       
       if (error) {
+        console.error("Error fetching user role:", error);
+        
         if (error.code === 'PGRST116') {
           console.warn(`No role found for user ${userId}, creating default customer role`);
           // Create a default customer role for the user
@@ -95,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return 'customer'; // Still return customer as default
           }
         }
-        console.error("Error fetching user role:", error);
+        
         return null;
       }
       
@@ -105,6 +94,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return data.role;
       } else {
         console.log(`No role data for user ${userId}, defaulting to customer`);
+        
+        // Create a default customer role for the user
+        try {
+          const { error: insertError } = await supabase
+            .from('user_roles')
+            .insert({ user_id: userId, role: 'customer' });
+          
+          if (insertError) {
+            console.error("Error creating default role:", insertError);
+          }
+        } catch (insertError) {
+          console.error("Exception creating default role:", insertError);
+        }
+        
         setUserRole('customer');
         return 'customer';
       }
@@ -119,22 +122,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log(`Auth state change: ${event}`, session?.user?.id || 'No user');
+      async (event, currentSession) => {
+        console.log(`Auth state change: ${event}`, currentSession?.user?.id || 'No user');
         
-        setSession(session);
-        if (session?.user) {
+        setSession(currentSession);
+        
+        if (currentSession?.user) {
           const userData = {
-            id: session.user.id,
-            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-            email: session.user.email || '',
+            id: currentSession.user.id,
+            name: currentSession.user.user_metadata?.name || currentSession.user.email?.split('@')[0] || 'User',
+            email: currentSession.user.email || '',
           };
+          
           setUser(userData);
           setIsAuthenticated(true);
           
           // Fetch user role with a delay to avoid state update issues
           setTimeout(async () => {
-            const role = await fetchUserRole(session.user.id);
+            const role = await fetchUserRole(currentSession.user.id);
             console.log(`User role after auth state change: ${role}`);
           }, 100);
         } else {
@@ -146,20 +151,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      console.log("Checking existing session", session?.user?.id || 'No session');
-      
-      if (session?.user) {
-        // Verify the user still exists in the database
-        try {
-          const { data: userExists } = await supabase
+    const checkExistingSession = async () => {
+      try {
+        const { data: { session: existingSession } } = await supabase.auth.getSession();
+        console.log("Checking existing session", existingSession?.user?.id || 'No session');
+        
+        if (existingSession?.user) {
+          // Verify the user exists in the database
+          const { data: userRoleData, error: userRoleError } = await supabase
             .from('user_roles')
             .select('role')
-            .eq('user_id', session.user.id)
+            .eq('user_id', existingSession.user.id)
             .maybeSingle();
             
-          if (!userExists) {
-            console.warn("User found in session but not in database. Logging out.");
+          if (userRoleError && userRoleError.code !== 'PGRST116') {
+            console.warn("Error checking user in database:", userRoleError);
             await supabase.auth.signOut();
             setSession(null);
             setUser(null);
@@ -169,36 +175,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return;
           }
           
+          // If no role found, we'll create one in fetchUserRole
           const userData = {
-            id: session.user.id,
-            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-            email: session.user.email || '',
+            id: existingSession.user.id,
+            name: existingSession.user.user_metadata?.name || existingSession.user.email?.split('@')[0] || 'User',
+            email: existingSession.user.email || '',
           };
+          
           setUser(userData);
-          setSession(session);
+          setSession(existingSession);
           setIsAuthenticated(true);
           
           // Fetch user role with a delay to avoid state update issues
           setTimeout(async () => {
-            const role = await fetchUserRole(session.user.id);
+            const role = await fetchUserRole(existingSession.user.id);
             console.log(`Initial role fetch complete: ${role}`);
           }, 100);
-        } catch (error) {
-          console.error("Error verifying user in database:", error);
-          await supabase.auth.signOut();
-          setSession(null);
-          setUser(null);
-          setIsAuthenticated(false);
-          setUserRole(null);
         }
+        
+        setLoading(false);
+      } catch (error) {
+        console.error("Error checking session:", error);
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    };
+    
+    checkExistingSession();
 
     return () => {
       console.log("Cleaning up auth subscription");
       subscription.unsubscribe();
-    }
+    };
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
@@ -224,28 +231,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data.user) {
         console.log(`Login successful: ${data.user.id}`);
         
-        // Verify user exists in user_roles table
-        const { data: roleData, error: roleError } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', data.user.id)
-          .maybeSingle();
-          
-        if (roleError || !roleData) {
-          console.log("User not found in roles table, creating default role");
-          // Create default customer role
-          const { error: createRoleError } = await supabase
-            .from('user_roles')
-            .insert({ user_id: data.user.id, role: 'customer' });
-            
-          if (createRoleError) {
-            console.error("Error creating default role:", createRoleError);
-          }
-          
-          setUserRole('customer');
-        } else {
-          setUserRole(roleData.role);
-        }
+        // Fetch or create role
+        const role = await fetchUserRole(data.user.id);
         
         toast({
           title: "Login Successful",
