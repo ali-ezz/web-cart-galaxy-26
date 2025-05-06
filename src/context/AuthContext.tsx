@@ -42,12 +42,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Enhanced function to fetch user role with improved error handling
   const fetchUserRole = async (userId: string): Promise<string | null> => {
     if (!userId) {
-      console.log("fetchUserRole called with no userId");
+      console.warn("fetchUserRole called with no userId");
       return null;
     }
     
     try {
       console.log(`Fetching role for user: ${userId}`);
+      
+      // First verify the user exists in auth.users
+      const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);
+      
+      if (userError || !userData) {
+        console.error("User does not exist:", userError);
+        // Force logout if user doesn't exist in auth system
+        await supabase.auth.signOut();
+        setUser(null);
+        setSession(null);
+        setIsAuthenticated(false);
+        setUserRole(null);
+        return null;
+      }
       
       const { data, error } = await supabase
         .from('user_roles')
@@ -57,17 +71,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (error) {
         if (error.code === 'PGRST116') {
-          console.warn(`No role found for user ${userId}, defaulting to customer`);
+          console.warn(`No role found for user ${userId}, creating default customer role`);
           // Create a default customer role for the user
           try {
-            await supabase
+            const { error: insertError } = await supabase
               .from('user_roles')
               .insert({ user_id: userId, role: 'customer' });
+            
+            if (insertError) {
+              console.error("Error creating default role:", insertError);
+              toast({
+                title: "Error setting user role",
+                description: "Could not set default user role. Please contact support.",
+                variant: "destructive",
+              });
+              return 'customer'; // Still return customer as default
+            }
             
             setUserRole('customer');
             return 'customer';
           } catch (insertError) {
-            console.error("Error creating default role:", insertError);
+            console.error("Exception creating default role:", insertError);
             return 'customer'; // Still return customer as default
           }
         }
@@ -102,7 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session?.user) {
           const userData = {
             id: session.user.id,
-            name: session.user.user_metadata?.name || 'User',
+            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
             email: session.user.email || '',
           };
           setUser(userData);
@@ -125,21 +149,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       console.log("Checking existing session", session?.user?.id || 'No session');
       
-      setSession(session);
       if (session?.user) {
-        const userData = {
-          id: session.user.id,
-          name: session.user.user_metadata?.name || 'User',
-          email: session.user.email || '',
-        };
-        setUser(userData);
-        setIsAuthenticated(true);
-        
-        // Fetch user role with a delay to avoid state update issues
-        setTimeout(async () => {
-          const role = await fetchUserRole(session.user.id);
-          console.log(`Initial role fetch complete: ${role}`);
-        }, 100);
+        // Verify the user still exists in the database
+        try {
+          const { data: userExists } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+            
+          if (!userExists) {
+            console.warn("User found in session but not in database. Logging out.");
+            await supabase.auth.signOut();
+            setSession(null);
+            setUser(null);
+            setIsAuthenticated(false);
+            setUserRole(null);
+            setLoading(false);
+            return;
+          }
+          
+          const userData = {
+            id: session.user.id,
+            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+            email: session.user.email || '',
+          };
+          setUser(userData);
+          setSession(session);
+          setIsAuthenticated(true);
+          
+          // Fetch user role with a delay to avoid state update issues
+          setTimeout(async () => {
+            const role = await fetchUserRole(session.user.id);
+            console.log(`Initial role fetch complete: ${role}`);
+          }, 100);
+        } catch (error) {
+          console.error("Error verifying user in database:", error);
+          await supabase.auth.signOut();
+          setSession(null);
+          setUser(null);
+          setIsAuthenticated(false);
+          setUserRole(null);
+        }
       }
       setLoading(false);
     });
@@ -173,12 +224,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data.user) {
         console.log(`Login successful: ${data.user.id}`);
         
-        // Fetch role immediately after login
-        const role = await fetchUserRole(data.user.id);
+        // Verify user exists in user_roles table
+        const { data: roleData, error: roleError } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .maybeSingle();
+          
+        if (roleError || !roleData) {
+          console.log("User not found in roles table, creating default role");
+          // Create default customer role
+          const { error: createRoleError } = await supabase
+            .from('user_roles')
+            .insert({ user_id: data.user.id, role: 'customer' });
+            
+          if (createRoleError) {
+            console.error("Error creating default role:", createRoleError);
+          }
+          
+          setUserRole('customer');
+        } else {
+          setUserRole(roleData.role);
+        }
         
         toast({
           title: "Login Successful",
-          description: `Welcome back, ${data.user.user_metadata?.name || data.user.email || 'User'}!`,
+          description: `Welcome back, ${data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User'}!`,
         });
         
         return true;
@@ -241,6 +312,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           if (userRoleError) {
             console.error("Error setting user role:", userRoleError);
+            toast({
+              title: "Warning",
+              description: "Account created but role could not be set. Default role will be used.",
+              variant: "warning",
+            });
           }
         } catch (roleError: any) {
           console.error("Error setting user role:", roleError);
@@ -322,6 +398,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true);
       await supabase.auth.signOut();
+      
+      // Clear all auth state
+      setUser(null);
+      setSession(null);
+      setIsAuthenticated(false);
+      setUserRole(null);
       
       toast({
         title: "Logged out",

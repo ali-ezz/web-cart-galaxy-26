@@ -5,15 +5,53 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, ShoppingBag, Package, Truck, LayoutDashboard } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function WelcomePage() {
   const { isAuthenticated, userRole, loading, user } = useAuth();
   const navigate = useNavigate();
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const [verifyingUser, setVerifyingUser] = useState(false);
+  
+  // Function to verify the user exists in the database
+  const verifyUserExists = async () => {
+    if (!user?.id) return false;
+    
+    setVerifyingUser(true);
+    try {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (error) {
+        console.error("Error verifying user:", error);
+        return false;
+      }
+      
+      return !!data;
+    } catch (err) {
+      console.error("Exception verifying user:", err);
+      return false;
+    } finally {
+      setVerifyingUser(false);
+    }
+  };
   
   // Function to handle role-based navigation
-  const navigateToRoleDashboard = () => {
+  const navigateToRoleDashboard = async () => {
     setIsRedirecting(true);
+    
+    // Verify user exists in database
+    const userExists = await verifyUserExists();
+    if (!userExists) {
+      console.warn("User not found in database, redirecting to login");
+      await supabase.auth.signOut();
+      navigate("/login");
+      return;
+    }
+    
     if (!userRole) {
       console.warn("User role not available yet, defaulting to home page");
       navigate("/");
@@ -57,10 +95,10 @@ export default function WelcomePage() {
         </CardHeader>
         
         <CardContent className="space-y-6 py-4">
-          {loading ? (
-            <div className="flex justify-center">
+          {loading || verifyingUser ? (
+            <div className="flex justify-center items-center">
               <Loader2 className="h-8 w-8 animate-spin text-shop-purple" />
-              <p className="ml-2">Checking your account...</p>
+              <p className="ml-2">{verifyingUser ? "Verifying your account..." : "Checking your account..."}</p>
             </div>
           ) : (
             <>
@@ -98,12 +136,16 @@ export default function WelcomePage() {
         <CardFooter>
           <Button 
             onClick={navigateToRoleDashboard} 
-            disabled={loading || isRedirecting} 
+            disabled={loading || verifyingUser || isRedirecting} 
             className="w-full"
           >
             {isRedirecting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Redirecting...
+              </>
+            ) : verifyingUser ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verifying...
               </>
             ) : (
               'Continue to Dashboard'
