@@ -1,181 +1,116 @@
 
+import React, { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { useEffect, useState } from "react";
-import { User, ShoppingBag, Truck, Settings, Loader2 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Loader2, ShoppingBag, Package, Truck, LayoutDashboard } from "lucide-react";
 
 export default function WelcomePage() {
-  const { user, userRole, loading, fetchUserRole } = useAuth();
+  const { isAuthenticated, userRole, loading, user } = useAuth();
   const navigate = useNavigate();
-  const { toast } = useToast();
   const [isRedirecting, setIsRedirecting] = useState(false);
-  const [roleCheckComplete, setRoleCheckComplete] = useState(false);
   
-  useEffect(() => {
-    // If the user is logged in but we don't have their role yet, fetch it
-    const checkRole = async () => {
-      if (user && !userRole && !loading) {
-        console.log("Welcome page: Fetching user role");
-        try {
-          const role = await fetchUserRole(user.id);
-          console.log(`Welcome page: Role fetched: ${role}`);
-          setRoleCheckComplete(true);
-        } catch (error) {
-          console.error("Welcome page: Error fetching role", error);
-          setRoleCheckComplete(true);
-        }
-      } else {
-        setRoleCheckComplete(true);
-      }
-    };
-    
-    checkRole();
-  }, [user, userRole, loading, fetchUserRole]);
-  
-  // Handle redirection based on user role once everything is loaded
-  useEffect(() => {
-    if (!loading && user && userRole && roleCheckComplete) {
-      console.log(`Welcome page: Ready to redirect user with role: ${userRole}`);
-      setIsRedirecting(true);
-      
-      const timer = setTimeout(() => {
-        switch(userRole) {
-          case 'admin':
-            console.log("Welcome page: Redirecting to admin dashboard");
-            navigate('/admin');
-            break;
-          case 'seller':
-            console.log("Welcome page: Redirecting to seller dashboard");
-            navigate('/seller');
-            break;
-          case 'delivery':
-            console.log("Welcome page: Redirecting to delivery dashboard");
-            navigate('/delivery');
-            break;
-          case 'customer':
-            console.log("Welcome page: Redirecting to customer home");
-            navigate('/');
-            break;
-          default:
-            // If no valid role, show toast and stay on welcome page
-            console.log("Welcome page: Invalid role detected");
-            toast({
-              title: "Role not recognized",
-              description: "Your account doesn't have a valid role assigned.",
-              variant: "destructive"
-            });
-            setIsRedirecting(false);
-            break;
-        }
-      }, 500); // Small delay to avoid immediate redirects
-      
-      return () => clearTimeout(timer);
+  // Function to handle role-based navigation
+  const navigateToRoleDashboard = () => {
+    setIsRedirecting(true);
+    if (!userRole) {
+      console.warn("User role not available yet, defaulting to home page");
+      navigate("/");
+      return;
     }
-  }, [userRole, loading, navigate, user, toast, roleCheckComplete]);
-  
-  if (loading || isRedirecting) {
-    return (
-      <div className="container mx-auto p-8 flex flex-col items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 text-shop-purple animate-spin mb-4" />
-        <p className="text-gray-600">
-          {loading ? "Checking your account..." : "Redirecting to your dashboard..."}
-        </p>
-      </div>
-    );
-  }
-  
-  if (!user) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-2xl mx-auto">
-          <Card className="p-6 md:p-8">
-            <div className="text-center mb-6">
-              <h1 className="text-3xl font-bold mb-2">Welcome to ShopGalaxy</h1>
-              <p className="text-gray-600">Your one-stop shop for everything</p>
-            </div>
-            
-            <div className="flex justify-center space-x-4">
-              <Button onClick={() => navigate('/login')} className="mx-2">
-                Sign In
-              </Button>
-              <Button onClick={() => navigate('/register')} variant="outline" className="mx-2">
-                Register
-              </Button>
-            </div>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-  
+    
+    console.log(`Navigating based on role: ${userRole}`);
+    switch (userRole) {
+      case "admin":
+        navigate("/admin");
+        break;
+      case "seller":
+        navigate("/seller");
+        break;
+      case "delivery":
+        navigate("/delivery");
+        break;
+      case "customer":
+      default:
+        navigate("/");
+        break;
+    }
+  };
+
+  useEffect(() => {
+    // If loading is complete and we have authentication info, proceed
+    if (!loading) {
+      if (!isAuthenticated) {
+        console.log("User not authenticated, redirecting to login");
+        navigate("/login");
+      }
+    }
+  }, [isAuthenticated, loading, navigate]);
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="max-w-2xl mx-auto">
-        <Card className="p-6 md:p-8">
-          <div className="text-center mb-6">
-            <h1 className="text-3xl font-bold mb-2">Welcome, {user.name}!</h1>
-            <p className="text-gray-600">Thank you for signing in to ShopGalaxy.</p>
-          </div>
-          
-          <div className="space-y-4 mb-8">
-            <p className="text-center">
-              {userRole ? (
-                <span>
-                  Your account is set up as a <span className="font-medium text-shop-purple">{userRole}</span> account.
-                </span>
-              ) : (
-                <span>We're checking your account role...</span>
-              )}
-            </p>
-            
+    <div className="container mx-auto px-4 py-20">
+      <Card className="w-full max-w-md mx-auto">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold text-shop-purple">Welcome to UniMarket</CardTitle>
+          <CardDescription>Everything you need, all in one place</CardDescription>
+        </CardHeader>
+        
+        <CardContent className="space-y-6 py-4">
+          {loading ? (
             <div className="flex justify-center">
-              {userRole === 'customer' ? (
-                <Button onClick={() => navigate('/')} className="mx-2">
-                  <ShoppingBag className="mr-2 h-4 w-4" />
-                  Start Shopping
-                </Button>
-              ) : userRole === 'seller' ? (
-                <Button onClick={() => navigate('/seller')} className="mx-2">
-                  <Settings className="mr-2 h-4 w-4" />
-                  Go to Seller Dashboard
-                </Button>
-              ) : userRole === 'delivery' ? (
-                <Button onClick={() => navigate('/delivery')} className="mx-2">
-                  <Truck className="mr-2 h-4 w-4" />
-                  Go to Delivery Dashboard
-                </Button>
-              ) : userRole === 'admin' ? (
-                <Button onClick={() => navigate('/admin')} className="mx-2">
-                  <User className="mr-2 h-4 w-4" />
-                  Go to Admin Dashboard
-                </Button>
-              ) : (
-                <Button onClick={() => navigate('/account')} className="mx-2">
-                  Go to Your Account
-                </Button>
-              )}
+              <Loader2 className="h-8 w-8 animate-spin text-shop-purple" />
+              <p className="ml-2">Checking your account...</p>
             </div>
-          </div>
-          
-          <div className="border-t pt-6 text-center">
-            <p className="text-sm text-gray-500 mb-4">
-              If you need to switch roles or have any questions, please contact an administrator.
-            </p>
-            <div className="flex justify-center space-x-4">
-              <Link to="/account" className="text-shop-purple hover:underline">
-                View Your Account
-              </Link>
-              <span className="text-gray-300">|</span>
-              <Link to="/help" className="text-shop-purple hover:underline">
-                Get Help
-              </Link>
-            </div>
-          </div>
-        </Card>
-      </div>
+          ) : (
+            <>
+              <div className="text-center">
+                <h3 className="text-lg font-medium mb-1">
+                  Hello, {user?.name || "User"}!
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  You are logged in as a{userRole === "admin" ? "n" : ""} <strong>{userRole || "user"}</strong>
+                </p>
+              </div>
+
+              <div className="grid gap-4">
+                <div className="flex items-center p-4 bg-gray-50 rounded-lg">
+                  {userRole === "admin" && <LayoutDashboard className="h-5 w-5 text-shop-purple mr-3" />}
+                  {userRole === "seller" && <Package className="h-5 w-5 text-shop-purple mr-3" />}
+                  {userRole === "delivery" && <Truck className="h-5 w-5 text-shop-purple mr-3" />}
+                  {(userRole === "customer" || !userRole) && <ShoppingBag className="h-5 w-5 text-shop-purple mr-3" />}
+                  
+                  <div>
+                    <h4 className="font-medium">Your Account Type</h4>
+                    <p className="text-sm text-gray-600">
+                      {userRole === "admin" && "Manage store operations and users"}
+                      {userRole === "seller" && "Sell your products on our platform"}
+                      {userRole === "delivery" && "Manage deliveries and routes"}
+                      {(userRole === "customer" || !userRole) && "Shop our products and track orders"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </CardContent>
+        
+        <CardFooter>
+          <Button 
+            onClick={navigateToRoleDashboard} 
+            disabled={loading || isRedirecting} 
+            className="w-full"
+          >
+            {isRedirecting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Redirecting...
+              </>
+            ) : (
+              'Continue to Dashboard'
+            )}
+          </Button>
+        </CardFooter>
+      </Card>
     </div>
   );
 }

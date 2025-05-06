@@ -1,216 +1,199 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useAuth } from '@/context/AuthContext';
-import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { useQuery } from '@tanstack/react-query';
-import { Camera, X, Upload, Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useToast } from '@/hooks/use-toast';
+import { Loader2, Upload, X } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
+// Define the form schema with Zod
+const formSchema = z.object({
+  name: z.string().min(3, { message: 'Product name must be at least 3 characters long' }),
+  description: z.string().min(10, { message: 'Description must be at least 10 characters long' }),
+  price: z.string().refine(val => !isNaN(Number(val)) && Number(val) > 0, { 
+    message: 'Price must be a positive number' 
+  }),
+  discountedPrice: z.string().refine(val => val === '' || (!isNaN(Number(val)) && Number(val) >= 0), {
+    message: 'Discounted price must be a positive number or empty'
+  }).optional(),
+  stock: z.string().refine(val => !isNaN(Number(val)) && Number(val) >= 0, {
+    message: 'Stock must be a non-negative number'
+  }),
+  category: z.string().min(1, { message: 'Please select a category' }),
+});
+
+type FormData = z.infer<typeof formSchema>;
+
 export default function AddProductPage() {
-  const { user } = useAuth();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { toast } = useToast();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [productImage, setProductImage] = useState<File | null>(null);
+  const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  
-  const [productData, setProductData] = useState({
-    name: '',
-    description: '',
-    price: '',
-    stock: '1',
-    category: '',
-    image_url: '',
-    discounted_price: '',
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const form = useForm<FormData>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      name: '',
+      description: '',
+      price: '',
+      discountedPrice: '',
+      stock: '1',
+      category: '',
+    },
   });
 
-  // Fetch categories from the database
-  const { data: categories, isLoading: categoriesLoading } = useQuery({
-    queryKey: ['categories'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('categories')
-        .select('name')
-        .order('name');
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast({
+          variant: "destructive",
+          title: "Image too large",
+          description: "The image must be less than 5MB in size.",
+        });
+        return;
+      }
+
+      if (!file.type.startsWith('image/')) {
+        toast({
+          variant: "destructive",
+          title: "Invalid file type",
+          description: "Please upload an image file.",
+        });
+        return;
+      }
       
-      if (error) throw error;
-      return data;
-    }
-  });
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setProductData({
-      ...productData,
-      [name]: value,
-    });
-  };
-
-  const handleCategoryChange = (value: string) => {
-    setProductData({
-      ...productData,
-      category: value,
-    });
-  };
-
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setProductImage(file);
-      
-      // Create image preview
+      setImage(file);
       const reader = new FileReader();
-      reader.onload = () => {
-        setImagePreview(reader.result as string);
-      };
+      reader.onload = (e) => setImagePreview(e.target?.result as string);
       reader.readAsDataURL(file);
     }
   };
 
   const removeImage = () => {
-    setProductImage(null);
+    setImage(null);
     setImagePreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
   };
 
-  const uploadImage = async (): Promise<string | null> => {
-    if (!productImage) return null;
+  const uploadImage = async (productId: string): Promise<string | null> => {
+    if (!image) return null;
     
     try {
       setIsUploading(true);
+      const fileExt = image.name.split('.').pop();
+      const filePath = `${productId}/${uuidv4()}.${fileExt}`;
       
-      // Create a unique file name
-      const fileExt = productImage.name.split('.').pop();
-      const fileName = `${uuidv4()}.${fileExt}`;
-      const filePath = `products/${fileName}`;
-      
-      // Upload the file to Supabase Storage
       const { data, error } = await supabase.storage
         .from('product-images')
-        .upload(filePath, productImage);
-      
-      if (error) throw error;
-      
-      // Get the public URL
-      const { data: publicUrlData } = supabase.storage
+        .upload(filePath, image, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      // Get the public URL for the uploaded image
+      const imageUrl = supabase.storage
         .from('product-images')
-        .getPublicUrl(filePath);
+        .getPublicUrl(data.path).data.publicUrl;
       
-      return publicUrlData.publicUrl;
-    } catch (error: any) {
+      setIsUploading(false);
+      return imageUrl;
+    } catch (error) {
       console.error('Error uploading image:', error);
       toast({
-        title: 'Image Upload Failed',
-        description: error.message || 'Could not upload product image',
-        variant: 'destructive',
+        variant: "destructive",
+        title: "Upload failed",
+        description: "There was a problem uploading the image.",
       });
-      return null;
-    } finally {
       setIsUploading(false);
+      return null;
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const onSubmit = async (data: FormData) => {
     if (!user) {
       toast({
-        title: "Authentication Error",
+        variant: "destructive",
+        title: "Authentication required",
         description: "You must be logged in to add a product.",
-        variant: "destructive"
       });
       return;
     }
+
+    setIsSubmitting(true);
     
     try {
-      setIsSubmitting(true);
+      // Convert string values to appropriate types
+      const productData = {
+        name: data.name,
+        description: data.description,
+        price: parseFloat(data.price),
+        discounted_price: data.discountedPrice ? parseFloat(data.discountedPrice) : null,
+        stock: parseInt(data.stock),
+        category: data.category,
+        seller_id: user.id,
+      };
       
-      // Convert numeric strings to numbers
-      const numericPrice = parseFloat(productData.price);
-      const numericStock = parseInt(productData.stock, 10);
-      
-      if (isNaN(numericPrice) || numericPrice <= 0) {
-        throw new Error("Price must be a valid positive number");
-      }
-      
-      if (isNaN(numericStock) || numericStock < 0) {
-        throw new Error("Stock must be a valid non-negative number");
-      }
-      
-      // Handle optional discounted price
-      let numericDiscountedPrice = null;
-      if (productData.discounted_price) {
-        numericDiscountedPrice = parseFloat(productData.discounted_price);
-        if (isNaN(numericDiscountedPrice) || numericDiscountedPrice <= 0) {
-          throw new Error("Discounted price must be a valid positive number");
-        }
-        if (numericDiscountedPrice >= numericPrice) {
-          throw new Error("Discounted price must be less than the regular price");
-        }
-      }
-      
-      // Upload image if one is selected
-      let imageUrl = productData.image_url;
-      if (productImage) {
-        const uploadedImageUrl = await uploadImage();
-        if (uploadedImageUrl) {
-          imageUrl = uploadedImageUrl;
-        }
-      }
-      
-      // Default image if none provided
-      if (!imageUrl) {
-        imageUrl = "https://via.placeholder.com/300?text=Product+Image";
-      }
-      
-      // Create the product in the database
-      const { data, error } = await supabase
+      // Insert the product into the database
+      const { data: product, error } = await supabase
         .from('products')
-        .insert({
-          name: productData.name,
-          description: productData.description,
-          price: numericPrice,
-          discounted_price: numericDiscountedPrice,
-          stock: numericStock,
-          category: productData.category,
-          image_url: imageUrl,
-          seller_id: user.id,
-        })
-        .select();
+        .insert(productData)
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      // If there's an image, upload it
+      let imageUrl = null;
+      if (image) {
+        imageUrl = await uploadImage(product.id);
         
-      if (error) throw error;
-      
+        if (imageUrl) {
+          // Update the product with the image URL
+          const { error: updateError } = await supabase
+            .from('products')
+            .update({ image_url: imageUrl })
+            .eq('id', product.id);
+          
+          if (updateError) {
+            console.error('Error updating product with image URL:', updateError);
+          }
+        }
+      }
+
       toast({
-        title: "Product Added",
+        title: "Product added",
         description: "Your product has been successfully added.",
       });
       
-      // Navigate to seller products page
       navigate('/seller/products');
-      
     } catch (error: any) {
+      console.error('Error adding product:', error);
       toast({
-        title: "Error Adding Product",
-        description: error.message || "An unexpected error occurred.",
-        variant: "destructive"
+        variant: "destructive",
+        title: "Failed to add product",
+        description: error.message || "There was a problem adding your product.",
       });
     } finally {
       setIsSubmitting(false);
@@ -219,208 +202,214 @@ export default function AddProductPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold">Add New Product</h1>
-        <p className="text-gray-600 mt-1">Create a new product listing in your store</p>
-      </div>
-      
-      <Card className="p-6">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Product Image */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium mb-2">
-              Product Image
-            </label>
-            <div className="flex items-center justify-center">
-              {imagePreview ? (
-                <div className="relative w-40 h-40">
-                  <img 
-                    src={imagePreview} 
-                    alt="Product preview" 
-                    className="w-full h-full object-cover rounded-md"
-                  />
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="destructive"
-                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
-                    onClick={removeImage}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <div 
-                  className="border-2 border-dashed border-gray-300 rounded-md p-6 w-40 h-40 flex flex-col items-center justify-center cursor-pointer hover:border-shop-purple transition-colors"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Camera className="h-10 w-10 text-gray-400 mb-2" />
-                  <p className="text-sm text-gray-500">Click to upload</p>
-                </div>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                accept="image/*"
-                onChange={handleImageSelect}
-              />
-            </div>
-            <p className="text-xs text-gray-500 mt-2 text-center">
-              Recommended: 800x800px. Max size: 5MB
-            </p>
-          </div>
+      <Card className="max-w-2xl mx-auto">
+        <CardHeader>
+          <CardTitle className="text-2xl">Add New Product</CardTitle>
+          <CardDescription>Fill in the details to add a new product to your store</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+              <div className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Product Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Enter product name" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium mb-1">
-                Product Name *
-              </label>
-              <Input
-                id="name"
-                name="name"
-                value={productData.name}
-                onChange={handleInputChange}
-                placeholder="Enter product name"
-                required
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="description" className="block text-sm font-medium mb-1">
-                Description
-              </label>
-              <Textarea
-                id="description"
-                name="description"
-                value={productData.description || ''}
-                onChange={handleInputChange}
-                placeholder="Enter product description"
-                rows={4}
-              />
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="price" className="block text-sm font-medium mb-1">
-                  Regular Price ($) *
-                </label>
-                <Input
-                  id="price"
-                  name="price"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={productData.price}
-                  onChange={handleInputChange}
-                  placeholder="0.00"
-                  required
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description</FormLabel>
+                      <FormControl>
+                        <Textarea 
+                          placeholder="Enter product description" 
+                          className="min-h-[100px]" 
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              
-              <div>
-                <label htmlFor="discounted_price" className="block text-sm font-medium mb-1">
-                  Sale Price ($)
-                </label>
-                <Input
-                  id="discounted_price"
-                  name="discounted_price"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={productData.discounted_price}
-                  onChange={handleInputChange}
-                  placeholder="Leave empty if no discount"
-                />
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="stock" className="block text-sm font-medium mb-1">
-                  Stock Quantity *
-                </label>
-                <Input
-                  id="stock"
-                  name="stock"
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={productData.stock}
-                  onChange={handleInputChange}
-                  placeholder="0"
-                  required
-                />
-              </div>
-              
-              <div>
-                <label htmlFor="category" className="block text-sm font-medium mb-1">
-                  Category *
-                </label>
-                <Select 
-                  value={productData.category} 
-                  onValueChange={handleCategoryChange}
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categoriesLoading ? (
-                      <SelectItem value="loading" disabled>Loading categories...</SelectItem>
-                    ) : categories && categories.length > 0 ? (
-                      categories.map((cat) => (
-                        <SelectItem key={cat.name} value={cat.name}>
-                          {cat.name}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="no-categories" disabled>No categories found</SelectItem>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="price"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Price ($)</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            placeholder="0.00" 
+                            step="0.01" 
+                            min="0"
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
                     )}
-                  </SelectContent>
-                </Select>
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="discountedPrice"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Discounted Price ($) (Optional)</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            placeholder="0.00" 
+                            step="0.01" 
+                            min="0"
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Leave blank if not on sale
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="stock"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Stock Quantity</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          placeholder="1" 
+                          min="0"
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="category"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Category</FormLabel>
+                      <Select 
+                        onValueChange={field.onChange} 
+                        defaultValue={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a category" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="electronics">Electronics</SelectItem>
+                          <SelectItem value="clothing">Clothing</SelectItem>
+                          <SelectItem value="home">Home & Kitchen</SelectItem>
+                          <SelectItem value="books">Books</SelectItem>
+                          <SelectItem value="beauty">Beauty & Personal Care</SelectItem>
+                          <SelectItem value="sports">Sports & Outdoors</SelectItem>
+                          <SelectItem value="toys">Toys & Games</SelectItem>
+                          <SelectItem value="grocery">Grocery & Gourmet Food</SelectItem>
+                          <SelectItem value="health">Health & Household</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="space-y-2">
+                  <FormLabel>Product Image</FormLabel>
+                  {imagePreview ? (
+                    <div className="relative w-full h-48 mt-2 rounded-md overflow-hidden">
+                      <img 
+                        src={imagePreview} 
+                        alt="Product preview" 
+                        className="w-full h-full object-cover" 
+                      />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="icon"
+                        className="absolute top-2 right-2"
+                        onClick={removeImage}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="border-2 border-dashed rounded-md p-6 text-center">
+                      <Upload className="mx-auto h-8 w-8 text-gray-400" />
+                      <div className="mt-2">
+                        <label 
+                          htmlFor="image-upload" 
+                          className="text-sm font-medium text-shop-purple cursor-pointer hover:text-shop-purple-dark"
+                        >
+                          Upload an image
+                        </label>
+                        <input
+                          id="image-upload"
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={handleImageChange}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          PNG, JPG, GIF up to 5MB
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-            
-            <div>
-              <label htmlFor="image_url" className="block text-sm font-medium mb-1">
-                Image URL (optional if uploading image)
-              </label>
-              <Input
-                id="image_url"
-                name="image_url"
-                value={productData.image_url}
-                onChange={handleInputChange}
-                placeholder="https://example.com/image.jpg"
-              />
-            </div>
-          </div>
-          
-          <div className="flex justify-end space-x-4 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => navigate('/seller/products')}
-              disabled={isSubmitting || isUploading}
-            >
-              Cancel
-            </Button>
-            <Button 
-              type="submit" 
-              disabled={isSubmitting || isUploading}
-              className="min-w-[120px]"
-            >
-              {isSubmitting || isUploading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {isUploading ? 'Uploading...' : 'Adding...'}
-                </>
-              ) : (
-                'Add Product'
-              )}
-            </Button>
-          </div>
-        </form>
+
+              <Button 
+                type="submit" 
+                className="w-full" 
+                disabled={isSubmitting || isUploading}
+              >
+                {(isSubmitting || isUploading) ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {isUploading ? 'Uploading Image...' : 'Adding Product...'}
+                  </>
+                ) : 'Add Product'}
+              </Button>
+              
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="w-full mt-2" 
+                onClick={() => navigate('/seller/products')}
+                disabled={isSubmitting || isUploading}
+              >
+                Cancel
+              </Button>
+            </form>
+          </Form>
+        </CardContent>
       </Card>
     </div>
   );

@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userRole, setUserRole] = useState<string | null>(null);
   const { toast } = useToast();
 
-  // Enhanced function to fetch user role
+  // Enhanced function to fetch user role with improved error handling
   const fetchUserRole = async (userId: string): Promise<string | null> => {
     if (!userId) {
       console.log("fetchUserRole called with no userId");
@@ -57,9 +57,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (error) {
         if (error.code === 'PGRST116') {
-          console.warn(`No role found for user ${userId}`);
-          // Default to customer role if no role is found
-          return 'customer';
+          console.warn(`No role found for user ${userId}, defaulting to customer`);
+          // Create a default customer role for the user
+          try {
+            await supabase
+              .from('user_roles')
+              .insert({ user_id: userId, role: 'customer' });
+            
+            setUserRole('customer');
+            return 'customer';
+          } catch (insertError) {
+            console.error("Error creating default role:", insertError);
+            return 'customer'; // Still return customer as default
+          }
         }
         console.error("Error fetching user role:", error);
         return null;
@@ -98,10 +108,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(userData);
           setIsAuthenticated(true);
           
-          // Use setTimeout to avoid potential recursive state updates
-          setTimeout(() => {
-            fetchUserRole(session.user.id);
-          }, 0);
+          // Fetch user role with a delay to avoid state update issues
+          setTimeout(async () => {
+            const role = await fetchUserRole(session.user.id);
+            console.log(`User role after auth state change: ${role}`);
+          }, 100);
         } else {
           setUser(null);
           setIsAuthenticated(false);
@@ -111,7 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       console.log("Checking existing session", session?.user?.id || 'No session');
       
       setSession(session);
@@ -124,12 +135,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(userData);
         setIsAuthenticated(true);
         
-        // Fetch user role with a slight delay to avoid state update issues
-        setTimeout(() => {
-          fetchUserRole(session.user.id).then(role => {
-            console.log(`Initial role fetch complete: ${role}`);
-          });
-        }, 0);
+        // Fetch user role with a delay to avoid state update issues
+        setTimeout(async () => {
+          const role = await fetchUserRole(session.user.id);
+          console.log(`Initial role fetch complete: ${role}`);
+        }, 100);
       }
       setLoading(false);
     });

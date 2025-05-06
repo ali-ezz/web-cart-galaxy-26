@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 
@@ -111,6 +110,38 @@ serve(async (req) => {
           requestBody.status,
           corsHeaders
         );
+        
+      case "add_product":
+        return await addProduct(
+          supabaseClient,
+          user.id,
+          requestBody.product,
+          corsHeaders
+        );
+        
+      case "update_product":
+        return await updateProduct(
+          supabaseClient,
+          user.id,
+          requestBody.product,
+          corsHeaders
+        );
+        
+      case "delete_product":
+        return await deleteProduct(
+          supabaseClient,
+          user.id,
+          requestBody.product_id,
+          corsHeaders
+        );
+        
+      case "get_seller_analytics":
+        return await getSellerAnalytics(
+          supabaseClient,
+          user.id,
+          requestBody.timeRange || 'week',
+          corsHeaders
+        );
 
       default:
         return new Response(
@@ -147,6 +178,340 @@ async function getSellerProducts(supabaseClient: any, sellerId: string, headers:
     JSON.stringify({ products: data }),
     { status: 200, headers }
   );
+}
+
+// Add a new product
+async function addProduct(
+  supabaseClient: any,
+  sellerId: string,
+  product: any,
+  headers: Record<string, string>
+) {
+  // Validate required fields
+  if (!product || !product.name || !product.price || !product.category) {
+    return new Response(
+      JSON.stringify({ error: "Missing required product fields" }),
+      { status: 400, headers }
+    );
+  }
+  
+  try {
+    // Add seller_id to the product data
+    const productData = {
+      ...product,
+      seller_id: sellerId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    const { data, error } = await supabaseClient
+      .from("products")
+      .insert(productData)
+      .select()
+      .single();
+      
+    if (error) throw error;
+    
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        product: data,
+        message: "Product added successfully"
+      }),
+      { status: 200, headers }
+    );
+  } catch (error) {
+    console.error("Error adding product:", error);
+    return new Response(
+      JSON.stringify({ error: "Failed to add product", details: error }),
+      { status: 500, headers }
+    );
+  }
+}
+
+// Update an existing product
+async function updateProduct(
+  supabaseClient: any,
+  sellerId: string,
+  product: any,
+  headers: Record<string, string>
+) {
+  // Validate required fields
+  if (!product || !product.id) {
+    return new Response(
+      JSON.stringify({ error: "Missing product ID" }),
+      { status: 400, headers }
+    );
+  }
+  
+  try {
+    // First check if the product belongs to this seller
+    const { data: existingProduct, error: fetchError } = await supabaseClient
+      .from("products")
+      .select("seller_id")
+      .eq("id", product.id)
+      .single();
+      
+    if (fetchError) throw fetchError;
+    
+    if (!existingProduct || existingProduct.seller_id !== sellerId) {
+      return new Response(
+        JSON.stringify({ error: "You don't have permission to update this product" }),
+        { status: 403, headers }
+      );
+    }
+    
+    // Update the product
+    const productData = {
+      ...product,
+      updated_at: new Date().toISOString()
+    };
+    
+    const { data, error } = await supabaseClient
+      .from("products")
+      .update(productData)
+      .eq("id", product.id)
+      .select()
+      .single();
+      
+    if (error) throw error;
+    
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        product: data,
+        message: "Product updated successfully" 
+      }),
+      { status: 200, headers }
+    );
+  } catch (error) {
+    console.error("Error updating product:", error);
+    return new Response(
+      JSON.stringify({ error: "Failed to update product", details: error }),
+      { status: 500, headers }
+    );
+  }
+}
+
+// Delete a product
+async function deleteProduct(
+  supabaseClient: any,
+  sellerId: string,
+  productId: string,
+  headers: Record<string, string>
+) {
+  if (!productId) {
+    return new Response(
+      JSON.stringify({ error: "Missing product ID" }),
+      { status: 400, headers }
+    );
+  }
+  
+  try {
+    // First check if the product belongs to this seller
+    const { data: existingProduct, error: fetchError } = await supabaseClient
+      .from("products")
+      .select("seller_id")
+      .eq("id", productId)
+      .single();
+      
+    if (fetchError) throw fetchError;
+    
+    if (!existingProduct || existingProduct.seller_id !== sellerId) {
+      return new Response(
+        JSON.stringify({ error: "You don't have permission to delete this product" }),
+        { status: 403, headers }
+      );
+    }
+    
+    // Delete the product
+    const { error } = await supabaseClient
+      .from("products")
+      .delete()
+      .eq("id", productId);
+      
+    if (error) throw error;
+    
+    return new Response(
+      JSON.stringify({ 
+        success: true,
+        message: "Product deleted successfully" 
+      }),
+      { status: 200, headers }
+    );
+  } catch (error) {
+    console.error("Error deleting product:", error);
+    return new Response(
+      JSON.stringify({ error: "Failed to delete product", details: error }),
+      { status: 500, headers }
+    );
+  }
+}
+
+// Get analytics data for seller
+async function getSellerAnalytics(
+  supabaseClient: any,
+  sellerId: string,
+  timeRange: string,
+  headers: Record<string, string>
+) {
+  try {
+    // Calculate date range based on the time range
+    const now = new Date();
+    let startDate = new Date();
+    
+    switch (timeRange) {
+      case 'day':
+        startDate.setDate(now.getDate() - 1);
+        break;
+      case 'week':
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case 'month':
+        startDate.setMonth(now.getMonth() - 1);
+        break;
+      case 'year':
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+      default:
+        startDate.setDate(now.getDate() - 7); // Default to week
+    }
+    
+    // First get all product IDs for this seller
+    const { data: products, error: productsError } = await supabaseClient
+      .from("products")
+      .select("id, name, category, price")
+      .eq("seller_id", sellerId);
+
+    if (productsError) throw productsError;
+    if (!products || products.length === 0) {
+      return new Response(
+        JSON.stringify({ message: "No products found" }),
+        { status: 200, headers }
+      );
+    }
+    
+    const productIds = products.map((p: any) => p.id);
+    
+    // Get order items for these products within the date range
+    const { data: orderItems, error: itemsError } = await supabaseClient
+      .from("order_items")
+      .select("price, quantity, order_id, product_id")
+      .in("product_id", productIds);
+      
+    if (itemsError) throw itemsError;
+    
+    // Get all orders for these items
+    const orderIds = [...new Set(orderItems?.map((item: any) => item.order_id) || [])];
+    
+    const { data: orders, error: ordersError } = await supabaseClient
+      .from("orders")
+      .select("id, created_at, status")
+      .in("id", orderIds)
+      .gte("created_at", startDate.toISOString())
+      .order("created_at", { ascending: true });
+      
+    if (ordersError) throw ordersError;
+    
+    // Process data for analytics
+    const orderData = orders || [];
+    const productMap = new Map(products.map((p: any) => [p.id, p]));
+    
+    // Group by date for time series
+    const salesByDate = new Map();
+    const salesByCategory = new Map();
+    const productSales = new Map();
+    let totalRevenue = 0;
+    let totalItems = 0;
+    
+    // Initialize product sales
+    products.forEach((product: any) => {
+      productSales.set(product.id, { 
+        id: product.id, 
+        name: product.name,
+        sales: 0,
+        revenue: 0
+      });
+    });
+    
+    // Process order items
+    orderItems?.forEach((item: any) => {
+      const order = orderData.find((o: any) => o.id === item.order_id);
+      if (!order) return; // Skip if order not found or outside date range
+      
+      const product = productMap.get(item.product_id);
+      if (!product) return;
+      
+      // Get date string (YYYY-MM-DD)
+      const orderDate = new Date(order.created_at).toISOString().split('T')[0];
+      
+      // Update sales by date
+      if (!salesByDate.has(orderDate)) {
+        salesByDate.set(orderDate, { date: orderDate, amount: 0, orders: 0 });
+      }
+      const dateStats = salesByDate.get(orderDate);
+      dateStats.amount += item.price * item.quantity;
+      dateStats.orders += 1;
+      
+      // Update sales by category
+      const category = product.category || 'other';
+      if (!salesByCategory.has(category)) {
+        salesByCategory.set(category, { name: category, value: 0 });
+      }
+      const catStats = salesByCategory.get(category);
+      catStats.value += item.price * item.quantity;
+      
+      // Update product sales
+      if (productSales.has(item.product_id)) {
+        const productStat = productSales.get(item.product_id);
+        productStat.sales += item.quantity;
+        productStat.revenue += item.price * item.quantity;
+      }
+      
+      // Update totals
+      totalRevenue += item.price * item.quantity;
+      totalItems += item.quantity;
+    });
+    
+    // Convert maps to arrays and sort
+    const salesData = Array.from(salesByDate.values()).sort((a, b) => 
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+    
+    const categorySales = Array.from(salesByCategory.values()).sort((a, b) => b.value - a.value);
+    
+    const topProducts = Array.from(productSales.values())
+      .filter(p => p.sales > 0)
+      .sort((a, b) => b.sales - a.sales)
+      .slice(0, 5);
+    
+    // Calculate metrics
+    const metrics = {
+      totalRevenue,
+      totalOrders: orderData.length,
+      totalItems,
+      totalProducts: products.length,
+      averageOrderValue: orderData.length > 0 ? totalRevenue / orderData.length : 0
+    };
+    
+    const analytics = {
+      salesData,
+      categorySales,
+      topProducts,
+      metrics
+    };
+    
+    return new Response(
+      JSON.stringify(analytics),
+      { status: 200, headers }
+    );
+  } catch (error) {
+    console.error("Error fetching seller analytics:", error);
+    return new Response(
+      JSON.stringify({ error: "Failed to fetch analytics", details: error }),
+      { status: 500, headers }
+    );
+  }
 }
 
 // Get total sales for a seller
