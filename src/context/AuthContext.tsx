@@ -10,7 +10,7 @@ interface User {
   id: string;
   name: string;
   email: string;
-  role?: string; // Added role
+  role?: string;
 }
 
 // Extract the user_role type from Database type definition
@@ -39,11 +39,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userRole, setUserRole] = useState<string | null>(null);
   const { toast } = useToast();
 
-  // Function to fetch user role
+  // Enhanced function to fetch user role
   const fetchUserRole = async (userId: string): Promise<string | null> => {
-    if (!userId) return null;
+    if (!userId) {
+      console.log("fetchUserRole called with no userId");
+      return null;
+    }
     
     try {
+      console.log(`Fetching role for user: ${userId}`);
+      
       const { data, error } = await supabase
         .from('user_roles')
         .select('role')
@@ -51,24 +56,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single();
       
       if (error) {
+        if (error.code === 'PGRST116') {
+          console.warn(`No role found for user ${userId}`);
+          // Default to customer role if no role is found
+          return 'customer';
+        }
         console.error("Error fetching user role:", error);
         return null;
       }
       
       if (data) {
+        console.log(`Role found for user ${userId}: ${data.role}`);
         setUserRole(data.role);
         return data.role;
+      } else {
+        console.log(`No role data for user ${userId}, defaulting to customer`);
+        setUserRole('customer');
+        return 'customer';
       }
     } catch (error) {
-      console.error("Error fetching user role:", error);
+      console.error("Exception in fetchUserRole:", error);
+      return null;
     }
-    return null;
   };
 
   useEffect(() => {
+    console.log("Setting up auth state listener");
+    
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log(`Auth state change: ${event}`, session?.user?.id || 'No user');
+        
         setSession(session);
         if (session?.user) {
           const userData = {
@@ -79,7 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(userData);
           setIsAuthenticated(true);
           
-          // Defer role fetching to avoid recursive state updates
+          // Use setTimeout to avoid potential recursive state updates
           setTimeout(() => {
             fetchUserRole(session.user.id);
           }, 0);
@@ -93,6 +112,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log("Checking existing session", session?.user?.id || 'No session');
+      
       setSession(session);
       if (session?.user) {
         const userData = {
@@ -103,24 +124,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(userData);
         setIsAuthenticated(true);
         
-        // Fetch user role
-        fetchUserRole(session.user.id);
+        // Fetch user role with a slight delay to avoid state update issues
+        setTimeout(() => {
+          fetchUserRole(session.user.id).then(role => {
+            console.log(`Initial role fetch complete: ${role}`);
+          });
+        }, 0);
       }
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      console.log("Cleaning up auth subscription");
+      subscription.unsubscribe();
+    }
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       setLoading(true);
+      console.log(`Login attempt: ${email}`);
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
+        console.error("Login error:", error.message);
         toast({
           title: "Login Failed",
           description: error.message,
@@ -130,6 +161,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data.user) {
+        console.log(`Login successful: ${data.user.id}`);
+        
+        // Fetch role immediately after login
+        const role = await fetchUserRole(data.user.id);
+        
         toast({
           title: "Login Successful",
           description: `Welcome back, ${data.user.user_metadata?.name || data.user.email || 'User'}!`,
@@ -140,6 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return false;
     } catch (error: any) {
+      console.error("Login exception:", error);
       toast({
         title: "Login Failed",
         description: error.message || "An unexpected error occurred",

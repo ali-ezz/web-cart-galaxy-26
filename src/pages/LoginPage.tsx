@@ -8,11 +8,16 @@ import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
+import * as z from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
 
-type LoginFormValues = {
-  email: string;
-  password: string;
-};
+// Create a schema for form validation
+const loginSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
+
+type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const { login, isAuthenticated, userRole } = useAuth();
@@ -21,33 +26,52 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
-  const from = location.state?.from || '/welcome';
-  
-  const form = useForm<LoginFormValues>();
+  // Initialize form with Zod resolver
+  const form = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: '',
+      password: '',
+    },
+  });
   
   // Check if user is already authenticated, redirect to appropriate page
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/welcome');
+      const redirectTo = location.state?.from || (userRole ? getRoleBasedRedirect(userRole) : '/welcome');
+      console.log(`User authenticated, redirecting to: ${redirectTo}`);
+      navigate(redirectTo);
     }
-  }, [isAuthenticated, navigate, userRole]);
+  }, [isAuthenticated, navigate, userRole, location.state]);
+  
+  // Helper function to determine where to redirect based on user role
+  const getRoleBasedRedirect = (role: string): string => {
+    switch(role) {
+      case 'admin': return '/admin';
+      case 'seller': return '/seller';
+      case 'delivery': return '/delivery';
+      case 'customer': return '/';
+      default: return '/welcome';
+    }
+  };
   
   const onSubmit = async (data: LoginFormValues) => {
     setLoading(true);
     setError('');
     
     try {
-      // Use the auth context to log in the user
+      console.log("Attempting login with:", data.email);
       const success = await login(data.email, data.password);
       
       if (success) {
-        navigate('/welcome');
+        // Login succeeded, will be redirected by the useEffect above
+        console.log("Login successful");
       } else {
         setError('Invalid email or password');
       }
     } catch (err: any) {
-      setError('An error occurred during login. Please try again.');
       console.error('Login error:', err);
+      setError('An error occurred during login. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -137,10 +161,23 @@ export default function LoginPage() {
 
         {/* Demo accounts section */}
         <div className="mt-8 p-4 border border-gray-200 rounded-lg bg-gray-50">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Admin Login:</h3>
-          <div className="text-sm text-gray-600">
-            <p className="mb-1">Email: admin@example.com</p>
-            <p className="mb-1">Password: admin123</p>
+          <h3 className="text-sm font-medium text-gray-700 mb-2">Demo Accounts:</h3>
+          <div className="text-sm text-gray-600 space-y-3">
+            <div>
+              <p className="font-medium">Admin:</p>
+              <p className="mb-1">Email: admin@example.com</p>
+              <p>Password: admin123</p>
+            </div>
+            <div>
+              <p className="font-medium">Seller:</p>
+              <p className="mb-1">Email: seller@example.com</p>
+              <p>Password: seller123</p>
+            </div>
+            <div>
+              <p className="font-medium">Customer:</p>
+              <p className="mb-1">Email: customer@example.com</p>
+              <p>Password: customer123</p>
+            </div>
             <p className="mt-3 text-xs text-gray-500">Note: For testing only. In production, use secure credentials.</p>
           </div>
         </div>

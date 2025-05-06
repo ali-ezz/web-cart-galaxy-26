@@ -9,48 +9,52 @@ import { CartProvider } from "@/context/CartContext";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { useAuth } from "@/context/AuthContext";
+import { Suspense, lazy } from "react";
+import { Loader2 } from "lucide-react";
 
-// Pages
-import Home from "./pages/Home";
-import ProductPage from "./pages/ProductPage";
-import CategoryPage from "./pages/CategoryPage";
-import SearchPage from "./pages/SearchPage";
-import CartPage from "./pages/CartPage";
+// Eagerly loaded components (core functionality)
+import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
-import AccountPage from "./pages/AccountPage";
-import CheckoutSuccessPage from "./pages/CheckoutSuccessPage";
-import WishlistPage from "./pages/WishlistPage";
-import NotFound from "./pages/NotFound";
+import WelcomePage from "./pages/WelcomePage";
 import AuthConfirmationPage from "./pages/AuthConfirmationPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
-import SellerDashboardPage from "./pages/SellerDashboardPage";
-import DeliveryDashboardPage from "./pages/DeliveryDashboardPage";
-import AdminDashboardPage from "./pages/AdminDashboardPage";
-import WelcomePage from "./pages/WelcomePage";
 
-// Seller Pages
-import AddProductPage from "./pages/seller/AddProductPage";
-import ProductsPage from "./pages/seller/ProductsPage";
-import EditProductPage from "./pages/seller/EditProductPage";
-import OrdersPage from "./pages/seller/OrdersPage";
+// Lazily loaded components (per-role functionality)
+const Home = lazy(() => import("./pages/Home"));
+const ProductPage = lazy(() => import("./pages/ProductPage"));
+const CategoryPage = lazy(() => import("./pages/CategoryPage"));
+const SearchPage = lazy(() => import("./pages/SearchPage"));
+const CartPage = lazy(() => import("./pages/CartPage"));
+const AccountPage = lazy(() => import("./pages/AccountPage"));
+const CheckoutSuccessPage = lazy(() => import("./pages/CheckoutSuccessPage"));
+const WishlistPage = lazy(() => import("./pages/WishlistPage"));
 
-// Admin Pages
-import AdminUsersPage from "./pages/admin/AdminUsersPage";
-import AdminProductsPage from "./pages/admin/AdminProductsPage";
-import AdminOrdersPage from "./pages/admin/AdminOrdersPage";
-import AdminAnalyticsPage from "./pages/admin/AdminAnalyticsPage";
-import AdminApplicationsPage from "./pages/admin/AdminApplicationsPage";
-import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
+// Admin pages
+const AdminDashboardPage = lazy(() => import("./pages/AdminDashboardPage"));
+const AdminUsersPage = lazy(() => import("./pages/admin/AdminUsersPage"));
+const AdminProductsPage = lazy(() => import("./pages/admin/AdminProductsPage"));
+const AdminOrdersPage = lazy(() => import("./pages/admin/AdminOrdersPage"));
+const AdminAnalyticsPage = lazy(() => import("./pages/admin/AdminAnalyticsPage"));
+const AdminApplicationsPage = lazy(() => import("./pages/admin/AdminApplicationsPage"));
+const AdminSettingsPage = lazy(() => import("./pages/admin/AdminSettingsPage"));
 
-// Delivery Pages
-import AvailableOrdersPage from "./pages/delivery/AvailableOrdersPage";
-import DeliveryAssignmentsPage from "./pages/delivery/DeliveryAssignmentsPage";
-import DeliveryRoutesPage from "./pages/delivery/DeliveryRoutesPage";
-import DeliverySchedulePage from "./pages/delivery/DeliverySchedulePage";
-import DeliveryEarningsPage from "./pages/delivery/DeliveryEarningsPage";
-import DeliverySettingsPage from "./pages/delivery/DeliverySettingsPage";
+// Seller pages
+const SellerDashboardPage = lazy(() => import("./pages/SellerDashboardPage"));
+const AddProductPage = lazy(() => import("./pages/seller/AddProductPage"));
+const ProductsPage = lazy(() => import("./pages/seller/ProductsPage"));
+const EditProductPage = lazy(() => import("./pages/seller/EditProductPage"));
+const OrdersPage = lazy(() => import("./pages/seller/OrdersPage"));
+
+// Delivery pages
+const DeliveryDashboardPage = lazy(() => import("./pages/DeliveryDashboardPage"));
+const AvailableOrdersPage = lazy(() => import("./pages/delivery/AvailableOrdersPage"));
+const DeliveryAssignmentsPage = lazy(() => import("./pages/delivery/DeliveryAssignmentsPage"));
+const DeliveryRoutesPage = lazy(() => import("./pages/delivery/DeliveryRoutesPage"));
+const DeliverySchedulePage = lazy(() => import("./pages/delivery/DeliverySchedulePage"));
+const DeliveryEarningsPage = lazy(() => import("./pages/delivery/DeliveryEarningsPage"));
+const DeliverySettingsPage = lazy(() => import("./pages/delivery/DeliverySettingsPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,6 +64,15 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// Loading Fallback Component
+function LoadingFallback() {
+  return (
+    <div className="flex justify-center items-center h-[50vh]">
+      <Loader2 className="h-8 w-8 animate-spin text-shop-purple" />
+    </div>
+  );
+}
 
 // Protected Route Component
 interface ProtectedRouteProps {
@@ -73,11 +86,7 @@ function ProtectedRoute({ children, allowedRoles, redirectPath = '/login' }: Pro
   
   // Show loading state while checking auth
   if (loading) {
-    return (
-      <div className="container mx-auto p-8 flex justify-center">
-        <div className="w-8 h-8 border-4 border-shop-purple border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
+    return <LoadingFallback />;
   }
   
   // Check authentication
@@ -87,27 +96,37 @@ function ProtectedRoute({ children, allowedRoles, redirectPath = '/login' }: Pro
   
   // Check role if specified
   if (allowedRoles && userRole && !allowedRoles.includes(userRole)) {
+    console.log(`Access denied: User role ${userRole} not in allowed roles:`, allowedRoles);
     return <Navigate to="/welcome" replace />;
   }
   
-  return <>{children}</>;
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      {children}
+    </Suspense>
+  );
 }
 
 // Customer-only route - redirects other user types to their dashboard
 function CustomerRoute({ children }: { children: React.ReactNode }) {
   const { userRole, isAuthenticated, loading } = useAuth();
   
-  // Show nothing while loading
+  // Show loading state while checking auth
   if (loading) {
-    return null;
+    return <LoadingFallback />;
   }
   
   // If user is authenticated and not a customer, redirect to welcome page
   if (isAuthenticated && userRole && userRole !== 'customer') {
+    console.log(`Redirecting non-customer user (${userRole}) to welcome page`);
     return <Navigate to="/welcome" replace />;
   }
   
-  return <>{children}</>;
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      {children}
+    </Suspense>
+  );
 }
 
 const App = () => (
