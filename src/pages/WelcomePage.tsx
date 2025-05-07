@@ -6,32 +6,42 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, ShoppingBag, Package, Truck, LayoutDashboard } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 export default function WelcomePage() {
   const { isAuthenticated, userRole, loading, user } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [verifyingUser, setVerifyingUser] = useState(false);
   
-  // Function to verify the user exists in the database
+  // Function to verify the user exists in the database with improved error handling
   const verifyUserExists = async () => {
     if (!user?.id) return false;
     
     setVerifyingUser(true);
     try {
+      console.log(`Verifying user ID: ${user.id}`);
+      
+      // Check if user has a role assigned
       const { data, error } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', user.id)
         .maybeSingle();
       
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         console.error("Error verifying user:", error);
+        toast({
+          title: "Error verifying account",
+          description: "There was a problem connecting to the database. Please try again.",
+          variant: "destructive",
+        });
         return false;
       }
       
       if (!data) {
-        console.log("Creating default role for user");
+        console.log("No role found, creating default role for user");
         // Create default role
         const { error: insertError } = await supabase
           .from('user_roles')
@@ -39,53 +49,107 @@ export default function WelcomePage() {
           
         if (insertError) {
           console.error("Error creating default role:", insertError);
+          toast({
+            title: "Account setup issue",
+            description: "Could not set up your user profile. Please try logging out and back in.",
+            variant: "destructive",
+          });
           return false;
+        }
+        
+        toast({
+          title: "Account set up",
+          description: "Your account has been set up as a customer",
+        });
+      }
+      
+      // Also make sure the profile exists
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
+        
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error("Error checking profile:", profileError);
+      }
+      
+      // Create profile if not exists
+      if (profileError && profileError.code === 'PGRST116') {
+        const { error: insertProfileError } = await supabase
+          .from('profiles')
+          .insert({ id: user.id });
+          
+        if (insertProfileError) {
+          console.error("Error creating profile:", insertProfileError);
         }
       }
       
       return true;
     } catch (err) {
       console.error("Exception verifying user:", err);
+      toast({
+        title: "Unexpected error",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      });
       return false;
     } finally {
       setVerifyingUser(false);
     }
   };
   
-  // Function to handle role-based navigation
+  // Function to handle role-based navigation with improved error handling
   const navigateToRoleDashboard = async () => {
     setIsRedirecting(true);
     
-    // Verify user exists in database
-    const userExists = await verifyUserExists();
-    if (!userExists) {
-      console.warn("User validation failed, redirecting to login");
-      await supabase.auth.signOut();
-      navigate("/login");
-      return;
-    }
-    
-    if (!userRole) {
-      console.warn("User role not available yet, defaulting to home page");
-      navigate("/");
-      return;
-    }
-    
-    console.log(`Navigating based on role: ${userRole}`);
-    switch (userRole) {
-      case "admin":
-        navigate("/admin");
-        break;
-      case "seller":
-        navigate("/seller");
-        break;
-      case "delivery":
-        navigate("/delivery");
-        break;
-      case "customer":
-      default:
-        navigate("/");
-        break;
+    try {
+      // Verify user exists in database
+      const userExists = await verifyUserExists();
+      if (!userExists) {
+        console.warn("User validation failed, redirecting to login");
+        await supabase.auth.signOut();
+        navigate("/login");
+        return;
+      }
+      
+      // Add a small delay to ensure userRole is updated
+      setTimeout(() => {
+        if (!userRole) {
+          console.warn("User role not available yet, defaulting to home page");
+          toast({
+            title: "Role not detected",
+            description: "Your user role could not be detected. Using default view.",
+          });
+          navigate("/");
+          return;
+        }
+        
+        console.log(`Navigating based on role: ${userRole}`);
+        switch (userRole) {
+          case "admin":
+            navigate("/admin");
+            break;
+          case "seller":
+            navigate("/seller");
+            break;
+          case "delivery":
+            navigate("/delivery");
+            break;
+          case "customer":
+          default:
+            navigate("/");
+            break;
+        }
+      }, 500); // Short delay to ensure userRole is properly loaded
+    } catch (error) {
+      console.error("Navigation error:", error);
+      toast({
+        title: "Navigation error",
+        description: "Could not navigate to your dashboard. Please try again.",
+        variant: "destructive", 
+      });
+      setIsRedirecting(false);
     }
   };
 

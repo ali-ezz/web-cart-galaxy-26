@@ -11,6 +11,7 @@ import { AlertCircle, Loader2 } from 'lucide-react';
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from '@/hooks/use-toast';
 
 // Create a schema for form validation
 const loginSchema = z.object({
@@ -24,9 +25,11 @@ export default function LoginPage() {
   const { login, isAuthenticated, userRole } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [verifyingSession, setVerifyingSession] = useState(true);
   const [error, setError] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
   
   // Initialize form with Zod resolver
   const form = useForm<LoginFormValues>({
@@ -47,31 +50,60 @@ export default function LoginPage() {
         const { data, error } = await supabase.auth.getSession();
         
         if (data.session) {
-          // Verify user exists in database
-          const { data: userData, error: userError } = await supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', data.session.user.id)
-            .maybeSingle();
+          console.log("Active session found, verifying user in database");
           
-          if (userError && userError.code !== 'PGRST116') {
-            console.warn("Error verifying user in database:", userError);
-            await supabase.auth.signOut();
-          } else if (!userData) {
-            console.log("Creating default role for user");
-            // User doesn't have a role yet, create one
-            const { error: insertError } = await supabase
-              .from('user_roles')
-              .insert({ user_id: data.session.user.id, role: 'customer' });
+          // Verify user exists in database with retries
+          const verifyUserInDb = async (retries = 3, delay = 500) => {
+            try {
+              // Verify user exists in database
+              const { data: userData, error: userError } = await supabase
+                .from('user_roles')
+                .select('role')
+                .eq('user_id', data.session!.user.id)
+                .maybeSingle();
               
-            if (insertError) {
-              console.error("Error creating default role:", insertError);
-              await supabase.auth.signOut();
+              if (userError && userError.code !== 'PGRST116') {
+                console.warn("Error verifying user in database:", userError);
+                if (retries > 0) {
+                  console.log(`Retrying database verification. Attempts remaining: ${retries}`);
+                  setTimeout(() => verifyUserInDb(retries - 1, delay * 1.5), delay);
+                  return;
+                }
+                await supabase.auth.signOut();
+                setError("Database connection error. Please try again.");
+              } else if (!userData) {
+                console.log("Creating default role for user");
+                // User doesn't have a role yet, create one
+                const { error: insertError } = await supabase
+                  .from('user_roles')
+                  .insert({ user_id: data.session!.user.id, role: 'customer' });
+                  
+                if (insertError) {
+                  console.error("Error creating default role:", insertError);
+                  if (retries > 0) {
+                    console.log(`Retrying role creation. Attempts remaining: ${retries}`);
+                    setTimeout(() => verifyUserInDb(retries - 1, delay * 1.5), delay);
+                    return;
+                  }
+                  await supabase.auth.signOut();
+                  setError("Could not set up your account. Please try again.");
+                }
+              }
+            } catch (err) {
+              console.error("Error during user verification:", err);
+              if (retries > 0) {
+                setTimeout(() => verifyUserInDb(retries - 1, delay * 1.5), delay);
+              } else {
+                setError("Connection issue. Please try again.");
+              }
             }
-          }
+          };
+          
+          await verifyUserInDb();
         }
       } catch (err) {
         console.error("Error verifying session:", err);
+        setError("Session verification failed. Please try again.");
       } finally {
         setVerifyingSession(false);
       }
@@ -85,7 +117,11 @@ export default function LoginPage() {
     if (!verifyingSession && isAuthenticated) {
       const redirectTo = location.state?.from || (userRole ? getRoleBasedRedirect(userRole) : '/welcome');
       console.log(`User authenticated, redirecting to: ${redirectTo}`);
-      navigate(redirectTo);
+      
+      // Add a small delay to ensure consistent redirection
+      setTimeout(() => {
+        navigate(redirectTo);
+      }, 300);
     }
   }, [isAuthenticated, navigate, userRole, location.state, verifyingSession]);
   
@@ -100,6 +136,34 @@ export default function LoginPage() {
     }
   };
   
+  // Function to handle retry for database connection issues
+  const handleRetry = async () => {
+    setError('');
+    setRetryCount(prev => prev + 1);
+    
+    try {
+      // Force refresh the session
+      await supabase.auth.refreshSession();
+      setVerifyingSession(true);
+      
+      // Short timeout before checking session again
+      setTimeout(async () => {
+        const { data, error } = await supabase.auth.getSession();
+        if (!error && data.session) {
+          console.log("Session refreshed successfully");
+          // Let the useEffect handle the redirect
+        } else {
+          setVerifyingSession(false);
+          setError("Session refresh failed. Please try logging in again.");
+        }
+      }, 500);
+    } catch (err) {
+      console.error("Error during retry:", err);
+      setVerifyingSession(false);
+      setError("Retry failed. Please try logging in again.");
+    }
+  };
+  
   const onSubmit = async (data: LoginFormValues) => {
     setLoading(true);
     setError('');
@@ -111,6 +175,11 @@ export default function LoginPage() {
       if (success) {
         // Login succeeded, will be redirected by the useEffect above
         console.log("Login successful");
+        toast({
+          title: "Login successful",
+          description: "You are now logged in.",
+          variant: "default"
+        });
       } else {
         setError('Invalid email or password');
       }
@@ -137,7 +206,20 @@ export default function LoginPage() {
             <Alert variant="destructive" className="mb-6">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Error</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>
+                {error}
+                {error.includes("connection") && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleRetry} 
+                    className="mt-2"
+                    disabled={loading}
+                  >
+                    Retry Connection
+                  </Button>
+                )}
+              </AlertDescription>
             </Alert>
           )}
           

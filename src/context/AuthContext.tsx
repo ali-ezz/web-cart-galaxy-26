@@ -1,9 +1,9 @@
-
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Session, User as AuthUser } from "@supabase/supabase-js";
 import { Database } from "@/integrations/supabase/types";
+import { verifyUserConsistency } from "@/utils/authUtils";
 
 // Define our own User type to match what we get from Supabase
 interface User {
@@ -137,10 +137,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(userData);
           setIsAuthenticated(true);
           
-          // Fetch user role with a delay to avoid state update issues
+          // Verify user consistency on auth state change
           setTimeout(async () => {
-            const role = await fetchUserRole(currentSession.user.id);
-            console.log(`User role after auth state change: ${role}`);
+            // Verify and repair user data if needed
+            const isConsistent = await verifyUserConsistency(currentSession.user.id);
+            if (isConsistent) {
+              // If consistent, fetch the role
+              const role = await fetchUserRole(currentSession.user.id);
+              console.log(`User role after auth state change: ${role}`);
+            } else {
+              console.error("User data is inconsistent");
+              toast({
+                title: "Account issue detected",
+                description: "There may be a problem with your account data.",
+                variant: "destructive",
+              });
+            }
           }, 100);
         } else {
           setUser(null);
@@ -150,22 +162,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     );
 
-    // THEN check for existing session
+    // THEN check for existing session with improved error handling
     const checkExistingSession = async () => {
       try {
-        const { data: { session: existingSession } } = await supabase.auth.getSession();
+        const { data: { session: existingSession }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error("Error getting session:", sessionError);
+          setLoading(false);
+          return;
+        }
+        
         console.log("Checking existing session", existingSession?.user?.id || 'No session');
         
         if (existingSession?.user) {
-          // Verify the user exists in the database
-          const { data: userRoleData, error: userRoleError } = await supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', existingSession.user.id)
-            .maybeSingle();
-            
-          if (userRoleError && userRoleError.code !== 'PGRST116') {
-            console.warn("Error checking user in database:", userRoleError);
+          // Verify the user exists in the database and fix if needed
+          const isConsistent = await verifyUserConsistency(existingSession.user.id);
+          
+          if (!isConsistent) {
+            console.warn("User data is inconsistent, signing out");
+            toast({
+              title: "Account issue detected",
+              description: "We detected an issue with your account. Please log in again.",
+              variant: "destructive",
+            });
             await supabase.auth.signOut();
             setSession(null);
             setUser(null);
@@ -175,7 +195,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return;
           }
           
-          // If no role found, we'll create one in fetchUserRole
           const userData = {
             id: existingSession.user.id,
             name: existingSession.user.user_metadata?.name || existingSession.user.email?.split('@')[0] || 'User',
@@ -230,6 +249,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (data.user) {
         console.log(`Login successful: ${data.user.id}`);
+        
+        // Verify user consistency after login
+        const isConsistent = await verifyUserConsistency(data.user.id);
+        
+        if (!isConsistent) {
+          console.warn("User data inconsistency detected during login");
+          toast({
+            title: "Account Issue",
+            description: "We detected an issue with your account data which has been auto-repaired.",
+          });
+        }
         
         // Fetch or create role
         const role = await fetchUserRole(data.user.id);
