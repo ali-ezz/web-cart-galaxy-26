@@ -7,6 +7,10 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Loader2, ShoppingBag, Package, Truck, LayoutDashboard } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { Database } from "@/integrations/supabase/types";
+
+// Define the UserRole type to ensure consistency
+type UserRole = Database["public"]["Enums"]["user_role"];
 
 export default function WelcomePage() {
   const { isAuthenticated, userRole, loading, user } = useAuth();
@@ -42,10 +46,32 @@ export default function WelcomePage() {
       
       if (!data) {
         console.log("No role found, creating default role for user");
+        
+        // Get role from user metadata if available (for SSO users)
+        let roleToAssign: UserRole = 'customer';
+        
+        // Try to extract role from metadata for SSO users
+        const { data: sessionData } = await supabase.auth.getSession();
+        const userMetadata = sessionData?.session?.user?.user_metadata;
+        
+        if (userMetadata && userMetadata.role_request) {
+          const requestedRole = userMetadata.role_request as string;
+          if (requestedRole === 'admin' || 
+              requestedRole === 'customer' || 
+              requestedRole === 'seller' || 
+              requestedRole === 'delivery') {
+            roleToAssign = requestedRole as UserRole;
+            console.log(`Using role from metadata: ${roleToAssign}`);
+          }
+        }
+        
         // Create default role
         const { error: insertError } = await supabase
           .from('user_roles')
-          .insert({ user_id: user.id, role: 'customer' });
+          .insert({ 
+            user_id: user.id, 
+            role: roleToAssign 
+          });
           
         if (insertError) {
           console.error("Error creating default role:", insertError);
@@ -59,7 +85,7 @@ export default function WelcomePage() {
         
         toast({
           title: "Account set up",
-          description: "Your account has been set up as a customer",
+          description: `Your account has been set up as a ${roleToAssign}`,
         });
       }
       

@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -102,7 +101,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           try {
             const { error: insertError } = await supabase
               .from('user_roles')
-              .insert({ user_id: userId, role: roleToAssign });
+              .insert({ 
+                user_id: userId, 
+                role: roleToAssign 
+              });
             
             if (insertError) {
               console.error("Error creating default role:", insertError);
@@ -140,7 +142,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const { error: insertError } = await supabase
             .from('user_roles')
-            .insert({ user_id: userId, role: 'customer' as UserRole });
+            .insert({ 
+              user_id: userId, 
+              role: 'customer' as UserRole 
+            });
           
           if (insertError) {
             console.error("Error creating default role:", insertError);
