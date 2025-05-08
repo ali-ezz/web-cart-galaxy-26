@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
@@ -47,57 +46,52 @@ export default function DeliveryRoutesPage() {
   const { data: activeRoutes, isLoading, error } = useQuery({
     queryKey: ['deliveryRoutes', user?.id],
     queryFn: async () => {
-      if (!user?.id) return [];
+      if (!user?.id) return [] as Order[];
       
       try {
-        // Get active deliveries for this driver - explicitly typed to avoid deep inference
-        const result = await supabase
+        // Get active deliveries using type annotations to avoid inference issues
+        const { data, error } = await supabase
           .from('orders')
           .select('*')
           .eq('delivery_person_id', user.id)
           .eq('status', 'out_for_delivery')
           .order('created_at', { ascending: false });
         
-        // Handle query error
-        if (result.error) throw result.error;
+        if (error) throw error;
         
-        // Use type assertion with a simple array type first
-        const ordersData: any[] = result.data || [];
+        // Use explicit type assertion to avoid deep inference
+        const ordersData = (data || []) as unknown as RawOrder[];
         
-        if (ordersData.length === 0) return [];
+        if (ordersData.length === 0) return [] as Order[];
         
-        // Process each order with explicit typing to add customer details
-        const processedOrders: Order[] = await Promise.all(
-          ordersData.map(async (orderData, index) => {
-            const rawOrder = orderData as RawOrder;
-            
-            // Get customer name from profiles table with explicit result typing
-            const profileResult = await supabase
+        // Process orders with explicit typing
+        const processedOrders = await Promise.all(
+          ordersData.map(async (order, index): Promise<Order> => {
+            // Get customer name with explicit typing
+            const profileQuery = await supabase
               .from('profiles')
               .select('first_name, last_name')
-              .eq('id', rawOrder.user_id)
+              .eq('id', order.user_id)
               .single();
             
-            // Default customer name
             let customerName = 'Unknown Customer';
             
-            // Process profile data if available
-            if (!profileResult.error && profileResult.data) {
-              const profile = profileResult.data as CustomerProfile;
+            if (profileQuery.data) {
+              const profile = profileQuery.data as CustomerProfile;
               const firstName = profile.first_name || '';
               const lastName = profile.last_name || '';
               customerName = `${firstName} ${lastName}`.trim() || 'Unknown Customer';
             }
             
-            // Construct and return the processed order
+            // Return explicitly typed Order object
             return {
-              id: rawOrder.id,
-              created_at: rawOrder.created_at,
-              status: rawOrder.status,
-              shipping_address: rawOrder.shipping_address,
-              shipping_city: rawOrder.shipping_city,
-              shipping_state: rawOrder.shipping_state,
-              shipping_postal_code: rawOrder.shipping_postal_code,
+              id: order.id,
+              created_at: order.created_at,
+              status: order.status,
+              shipping_address: order.shipping_address,
+              shipping_city: order.shipping_city,
+              shipping_state: order.shipping_state,
+              shipping_postal_code: order.shipping_postal_code,
               customer_name: customerName,
               stopNumber: index + 1
             };
