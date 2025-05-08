@@ -304,7 +304,7 @@ export default function DeliverySchedulePage() {
                         <Badge 
                           variant={
                             slot.status === 'booked' ? "default" : 
-                            slot.status === 'completed' ? "success" : 
+                            slot.status === 'completed' ? "secondary" : 
                             slot.status === 'available' ? "outline" : 
                             "secondary"
                           }
