@@ -46,11 +46,13 @@ export default function DeliveryRoutesPage() {
 
   const { data: activeRoutes, isLoading, error } = useQuery({
     queryKey: ['deliveryRoutes', user?.id],
-    queryFn: async (): Promise<Order[]> => { // Add explicit return type
+    queryFn: async () => {
+      // Early return with explicit type if no user
       if (!user?.id) return [] as Order[];
       
       try {
-        const { data: rawData, error: fetchError } = await supabase
+        // Fetch orders with explicit typing
+        const { data, error: fetchError } = await supabase
           .from('orders')
           .select('*')
           .eq('delivery_person_id', user.id)
@@ -59,49 +61,47 @@ export default function DeliveryRoutesPage() {
         
         if (fetchError) throw fetchError;
         
-        // Type the raw data explicitly to break deep inference
-        const ordersData = rawData as any[] || [];
-        
+        // Handle no data case
+        const ordersData = data || [];
         if (ordersData.length === 0) return [] as Order[];
         
-        // Use a more direct approach for Promise.all
-        const processedOrders: Order[] = await Promise.all(
-          ordersData.map(async (rawOrder, index) => {
-            const order = rawOrder as RawOrder;
-            
-            const { data: profileData } = await supabase
-              .from('profiles')
-              .select('first_name, last_name')
-              .eq('id', order.user_id)
-              .single();
-            
-            // Process profile data with explicit types
-            let customerName = 'Unknown Customer';
-            if (profileData) {
-              const profile = profileData as CustomerProfile;
-              const firstName = profile.first_name || '';
-              const lastName = profile.last_name || '';
-              customerName = `${firstName} ${lastName}`.trim() || 'Unknown Customer';
-            }
-            
-            // Create order object with explicit type
-            const processedOrder: Order = {
-              id: order.id,
-              created_at: order.created_at,
-              status: order.status,
-              shipping_address: order.shipping_address,
-              shipping_city: order.shipping_city,
-              shipping_state: order.shipping_state,
-              shipping_postal_code: order.shipping_postal_code,
-              customer_name: customerName,
-              stopNumber: index + 1
-            };
-            
-            return processedOrder;
-          })
-        );
+        // Use simple array and map with explicit return type
+        const orders: Order[] = [];
         
-        return processedOrders;
+        // Process each order sequentially to avoid complex typing
+        for (let i = 0; i < ordersData.length; i++) {
+          const order = ordersData[i];
+          
+          // Get customer profile data
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('first_name, last_name')
+            .eq('id', order.user_id)
+            .single();
+          
+          // Process customer name
+          let customerName = 'Unknown Customer';
+          if (profileData) {
+            const firstName = profileData.first_name || '';
+            const lastName = profileData.last_name || '';
+            customerName = `${firstName} ${lastName}`.trim() || 'Unknown Customer';
+          }
+          
+          // Add processed order with explicit structure
+          orders.push({
+            id: order.id,
+            created_at: order.created_at,
+            status: order.status,
+            shipping_address: order.shipping_address,
+            shipping_city: order.shipping_city,
+            shipping_state: order.shipping_state,
+            shipping_postal_code: order.shipping_postal_code,
+            customer_name: customerName,
+            stopNumber: i + 1
+          });
+        }
+        
+        return orders;
       } catch (error) {
         console.error('Error fetching delivery routes:', error);
         throw error;
