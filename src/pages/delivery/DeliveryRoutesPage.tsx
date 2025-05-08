@@ -1,356 +1,327 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { MapPin, Loader2, AlertCircle, PackageCheck } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  AlertCircle,
+  MapPin,
+  Route,
+  Truck,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  RotateCw,
+} from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-interface Order {
+interface DeliveryAssignment {
   id: string;
-  created_at: string;
+  order_id: string;
+  assigned_at: string;
   status: string;
-  shipping_address: string;
-  shipping_city: string;
-  shipping_state: string;
-  shipping_postal_code: string;
-  customer_name?: string;
-  stopNumber?: number;
+  order: {
+    shipping_address: string;
+    shipping_city: string;
+    shipping_state: string;
+    shipping_postal_code: string;
+  };
 }
 
-// Define database order type with explicit fields needed
-interface DbOrder {
+interface RouteStop {
   id: string;
-  created_at: string;
-  status: string;
-  user_id: string;
-  shipping_address: string;
-  shipping_city: string;
-  shipping_state: string;
-  shipping_postal_code: string;
-}
-
-// Define profile type with only needed fields
-interface DbProfile {
-  first_name?: string;
-  last_name?: string;
+  address: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  sequence: number;
 }
 
 export default function DeliveryRoutesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-
-  const { data: activeRoutes, isLoading, error } = useQuery({
-    queryKey: ['deliveryRoutes', user?.id],
+  const [activeTab, setActiveTab] = useState("active");
+  const [optimizedRoute, setOptimizedRoute] = useState<RouteStop[]>([]);
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  
+  // Fetch delivery assignments
+  const { data: assignments, isLoading, error, refetch } = useQuery({
+    queryKey: ['deliveryAssignments', user?.id],
     queryFn: async () => {
-      // Return empty array if no user
-      if (!user?.id) return [] as Order[];
-      
       try {
-        console.log("Fetching delivery routes for user:", user.id);
-        
-        // Type explicitly with DbOrder[] to avoid deep inference
-        // Make sure to use 'assigned' instead of 'out_for_delivery' for delivery_status
-        const { data: ordersData, error: fetchError } = await supabase
-          .from('orders')
-          .select('*')
-          .eq('delivery_status', 'assigned')
-          .order('created_at', { ascending: false });
-        
-        if (fetchError) {
-          console.error("Error fetching orders:", fetchError);
-          throw fetchError;
-        }
-        
-        // Cast raw data to DbOrder[] to provide clear type boundaries
-        const orders = (ordersData || []) as DbOrder[];
-        console.log("Found orders:", orders.length);
-        
-        if (orders.length === 0) return [] as Order[];
-        
-        // Use simple array with clear type
-        const processedOrders: Order[] = [];
-        
-        // Process each order one at a time
-        for (let i = 0; i < orders.length; i++) {
-          const order = orders[i];
-          
-          // Get profile data with explicit type for response
-          const { data: profileData, error: profileError } = await supabase
-            .from('profiles')
-            .select('first_name, last_name')
-            .eq('id', order.user_id)
-            .single();
-          
-          if (profileError) {
-            console.warn("Could not fetch profile for user:", order.user_id, profileError);
+        const { data, error } = await supabase.functions.invoke('delivery_functions', {
+          body: {
+            action: 'get_delivery_assignments'
           }
-          
-          // Set default name
-          let customerName = 'Unknown Customer';
-          
-          // Process name if profile data exists
-          if (profileData) {
-            const profile = profileData as DbProfile;
-            const firstName = profile.first_name || '';
-            const lastName = profile.last_name || '';
-            customerName = `${firstName} ${lastName}`.trim() || 'Unknown Customer';
-          }
-          
-          // Build order with explicit fields to avoid inference issues
-          processedOrders.push({
-            id: order.id,
-            created_at: order.created_at,
-            status: order.status,
-            shipping_address: order.shipping_address,
-            shipping_city: order.shipping_city,
-            shipping_state: order.shipping_state,
-            shipping_postal_code: order.shipping_postal_code,
-            customer_name: customerName,
-            stopNumber: i + 1
-          });
-        }
-        
-        console.log("Processed orders:", processedOrders.length);
-        return processedOrders;
-      } catch (error) {
-        console.error('Error fetching delivery routes:', error);
-        toast({
-          title: 'Error loading routes',
-          description: 'There was a problem loading your delivery routes.',
-          variant: 'destructive',
         });
-        throw error;
+        
+        if (error) throw error;
+        
+        // Filter only in-progress assignments
+        return data?.assignments.filter((a: any) => a.status === 'assigned' || a.status === 'in_transit') || [];
+      } catch (err: any) {
+        console.error("Error fetching assignments:", err);
+        throw new Error(err.message || "Failed to load delivery assignments");
       }
     },
     enabled: !!user?.id,
-    refetchInterval: 60000, // Refetch every minute
   });
 
-  const openMapsWithAllDestinations = () => {
-    if (!activeRoutes || activeRoutes.length === 0) return;
+  // Format address for display
+  const formatAddress = (assignment: DeliveryAssignment) => {
+    const order = assignment.order;
+    return `${order.shipping_address}, ${order.shipping_city}, ${order.shipping_state} ${order.shipping_postal_code}`;
+  };
+  
+  // Mock function to optimize routes (in a real app, this would use an actual routing algorithm or API)
+  const optimizeRoute = () => {
+    setIsOptimizing(true);
     
-    try {
-      // Create a directions URL with multiple destinations
-      const destinations = activeRoutes.map(order => {
-        return encodeURIComponent(
-          `${order.shipping_address}, ${order.shipping_city}, ${order.shipping_state} ${order.shipping_postal_code}`
-        );
-      });
+    // Simulate API call delay
+    setTimeout(() => {
+      if (assignments && assignments.length > 0) {
+        // Create a copy and sort it randomly to simulate optimization
+        // In a real app, you would use an actual routing algorithm here
+        const routeStops: RouteStop[] = assignments.map((assignment: DeliveryAssignment, index: number) => ({
+          id: assignment.id,
+          address: assignment.order.shipping_address,
+          city: assignment.order.shipping_city,
+          state: assignment.order.shipping_state,
+          postal_code: assignment.order.shipping_postal_code,
+          sequence: index + 1
+        }));
+        
+        // Randomly shuffle to simulate optimization
+        const shuffled = [...routeStops].sort(() => Math.random() - 0.5);
+        
+        // Update sequence numbers
+        shuffled.forEach((stop, index) => {
+          stop.sequence = index + 1;
+        });
+        
+        setOptimizedRoute(shuffled);
+        toast({
+          title: "Route Optimized",
+          description: `Route optimized for ${assignments.length} deliveries`,
+        });
+      } else {
+        toast({
+          title: "Cannot Optimize Route",
+          description: "No active deliveries found to optimize",
+          variant: "destructive"
+        });
+      }
       
-      // Open in Google Maps
-      window.open(`https://www.google.com/maps/dir/?api=1&destination=${destinations[0]}&waypoints=${destinations.slice(1).join('|')}`, '_blank');
-    } catch (error) {
-      console.error("Error opening maps:", error);
-      toast({
-        title: 'Error',
-        description: 'Could not open map directions.',
-        variant: 'destructive',
-      });
-    }
+      setIsOptimizing(false);
+    }, 1500);
   };
-
-  const openSingleLocation = (address: string, city: string, state: string, postalCode: string) => {
-    try {
-      const fullAddress = encodeURIComponent(`${address}, ${city}, ${state} ${postalCode}`);
-      window.open(`https://www.google.com/maps/search/?api=1&query=${fullAddress}`, '_blank');
-    } catch (error) {
-      console.error("Error opening map:", error);
-      toast({
-        title: 'Error',
-        description: 'Could not open map for this address.',
-        variant: 'destructive',
-      });
-    }
+  
+  // Move route stop up in sequence
+  const moveStopUp = (index: number) => {
+    if (index <= 0) return;
+    
+    const newRoute = [...optimizedRoute];
+    const temp = newRoute[index - 1].sequence;
+    newRoute[index - 1].sequence = newRoute[index].sequence;
+    newRoute[index].sequence = temp;
+    
+    // Swap the items
+    [newRoute[index - 1], newRoute[index]] = [newRoute[index], newRoute[index - 1]];
+    
+    setOptimizedRoute(newRoute);
   };
-
-  // Handle unauthorized access
-  if (!user) {
-    return (
-      <div className="container mx-auto px-4 py-8 text-center">
-        <Card className="p-8">
-          <AlertCircle className="mx-auto h-12 w-12 text-amber-500 mb-4" />
-          <h2 className="text-2xl font-bold mb-2">Authentication Required</h2>
-          <p className="text-gray-600 mb-4">Please log in to view delivery routes.</p>
-          <Button onClick={() => window.location.href = '/login'}>Go to Login</Button>
-        </Card>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold">Delivery Routes</h1>
-          <p className="text-gray-600 mt-1">Plan and navigate your delivery stops</p>
-        </div>
-        
-        <div className="flex justify-center items-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-shop-purple" />
-          <span className="ml-2">Loading your routes...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold">Delivery Routes</h1>
-          <p className="text-gray-600 mt-1">Plan and navigate your delivery stops</p>
-        </div>
-        
-        <Card className="bg-red-50 border-red-200">
-          <CardHeader>
-            <CardTitle className="flex items-center text-red-700">
-              <AlertCircle className="mr-2 h-5 w-5" />
-              Error Loading Routes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-red-600">
-              There was a problem loading your delivery routes. Please try refreshing the page.
-            </p>
-            <Button 
-              onClick={() => window.location.reload()} 
-              variant="outline" 
-              className="mt-4"
-            >
-              Refresh
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  
+  // Move route stop down in sequence
+  const moveStopDown = (index: number) => {
+    if (index >= optimizedRoute.length - 1) return;
+    
+    const newRoute = [...optimizedRoute];
+    const temp = newRoute[index + 1].sequence;
+    newRoute[index + 1].sequence = newRoute[index].sequence;
+    newRoute[index].sequence = temp;
+    
+    // Swap the items
+    [newRoute[index + 1], newRoute[index]] = [newRoute[index], newRoute[index + 1]];
+    
+    setOptimizedRoute(newRoute);
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold">Delivery Routes</h1>
-          <p className="text-gray-600 mt-1">Plan and navigate your delivery stops</p>
-        </div>
-        
-        {activeRoutes && activeRoutes.length > 0 && (
-          <Button 
-            onClick={openMapsWithAllDestinations}
-            className="mt-4 md:mt-0"
-          >
-            <MapPin className="mr-2 h-4 w-4" />
-            Open Full Route in Maps
-          </Button>
-        )}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold">Delivery Routes</h1>
+        <p className="text-gray-600 mt-1">Plan and optimize your delivery routes</p>
       </div>
       
-      {activeRoutes && activeRoutes.length > 0 ? (
-        <>
-          <Card className="mb-6">
-            <CardHeader className="pb-3">
-              <CardTitle>Today's Route</CardTitle>
-              <CardDescription>
-                You have {activeRoutes.length} {activeRoutes.length === 1 ? 'stop' : 'stops'} on your current route
-              </CardDescription>
+      <Tabs defaultValue="active" className="space-y-6" onValueChange={setActiveTab}>
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="active">Active Deliveries</TabsTrigger>
+          <TabsTrigger value="optimized">Optimized Route</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="active">
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <CardTitle>Active Deliveries</CardTitle>
+                <Button 
+                  onClick={optimizeRoute} 
+                  disabled={isLoading || isOptimizing || !assignments || assignments.length === 0}
+                >
+                  {isOptimizing ? (
+                    <>
+                      <RotateCw className="mr-2 h-4 w-4 animate-spin" />
+                      Optimizing...
+                    </>
+                  ) : (
+                    <>
+                      <Route className="mr-2 h-4 w-4" />
+                      Optimize Route
+                    </>
+                  )}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="rounded-lg border">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-gray-50">
-                        <th className="py-3 px-4 text-left">Stop</th>
-                        <th className="py-3 px-4 text-left">Customer</th>
-                        <th className="py-3 px-4 text-left hidden md:table-cell">Address</th>
-                        <th className="py-3 px-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {activeRoutes.map((route) => (
-                        <tr key={route.id} className="border-b last:border-0">
-                          <td className="py-3 px-4 whitespace-nowrap">
-                            <Badge variant="outline" className="bg-shop-purple/10">
-                              Stop {route.stopNumber}
-                            </Badge>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="font-medium">{route.customer_name}</div>
-                            <div className="text-gray-500 text-xs md:hidden">
-                              {route.shipping_city}, {route.shipping_state}
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 hidden md:table-cell">
-                            <div>{route.shipping_address}</div>
-                            <div className="text-gray-500 text-xs">
-                              {route.shipping_city}, {route.shipping_state} {route.shipping_postal_code}
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openSingleLocation(
-                                route.shipping_address,
-                                route.shipping_city,
-                                route.shipping_state,
-                                route.shipping_postal_code
-                              )}
-                            >
-                              <MapPin className="mr-2 h-4 w-4" />
-                              <span className="hidden sm:inline">Directions</span>
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              {isLoading ? (
+                <div className="p-8 text-center">
+                  <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                  <p className="text-gray-500">Loading deliveries...</p>
                 </div>
-              </div>
+              ) : error ? (
+                <div className="p-8 text-center text-red-500">
+                  <AlertCircle className="h-12 w-12 mx-auto mb-4" />
+                  <p>Error loading deliveries. Please try again.</p>
+                  <Button 
+                    variant="outline"
+                    className="mt-4"
+                    onClick={() => refetch()}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : !assignments || assignments.length === 0 ? (
+                <div className="p-8 text-center">
+                  <Truck className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                  <h3 className="text-lg font-medium mb-2">No active deliveries</h3>
+                  <p className="text-gray-500 mb-4">
+                    You don't have any active deliveries to plan a route for.
+                  </p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Order ID</TableHead>
+                      <TableHead>Address</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {assignments.map((assignment: DeliveryAssignment) => (
+                      <TableRow key={assignment.id}>
+                        <TableCell className="font-medium">
+                          {assignment.order_id.slice(0, 8)}...
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center">
+                            <MapPin className="h-4 w-4 mr-2 text-gray-400" />
+                            {formatAddress(assignment)}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            assignment.status === 'in_transit' ? 
+                            'bg-yellow-100 text-yellow-800' : 
+                            'bg-blue-100 text-blue-800'
+                          }`}>
+                            {assignment.status === 'in_transit' ? 'IN TRANSIT' : 'ASSIGNED'}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
-          
-          <div className="hidden md:block">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle>Map View</CardTitle>
-                <CardDescription>
-                  Visual overview of your delivery route
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="border rounded-lg h-[400px] flex items-center justify-center bg-gray-50">
-                  <div className="text-center">
-                    <MapPin className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                    <p className="text-gray-500 font-medium">Interactive Map</p>
-                    <p className="text-gray-500 text-sm mb-4">Click "Open Full Route in Maps" for navigation</p>
-                    <Button onClick={openMapsWithAllDestinations}>
-                      Open in Google Maps
-                    </Button>
-                  </div>
+        </TabsContent>
+        
+        <TabsContent value="optimized">
+          <Card>
+            <CardHeader>
+              <CardTitle>Optimized Route</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {optimizedRoute.length === 0 ? (
+                <div className="p-8 text-center">
+                  <Route className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                  <h3 className="text-lg font-medium mb-2">No optimized route</h3>
+                  <p className="text-gray-500 mb-4">
+                    Click the "Optimize Route" button in the Active Deliveries tab to generate an optimized route.
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-        </>
-      ) : (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <PackageCheck className="h-12 w-12 text-gray-300 mb-4" />
-            <h3 className="font-medium text-xl mb-1">No Active Routes</h3>
-            <p className="text-gray-500 text-center mb-4">
-              You don't have any active deliveries at the moment.
-              Check the Available Orders page to pick up new deliveries.
-            </p>
-            <Button onClick={() => window.location.href = '/delivery/available'}>
-              Find Available Orders
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Sequence</TableHead>
+                      <TableHead>Address</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {optimizedRoute.map((stop, index) => (
+                      <TableRow key={stop.id}>
+                        <TableCell className="font-medium">
+                          {stop.sequence}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center">
+                            <MapPin className="h-4 w-4 mr-2 text-gray-400" />
+                            {`${stop.address}, ${stop.city}, ${stop.state} ${stop.postal_code}`}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex space-x-2">
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              disabled={index === 0}
+                              onClick={() => moveStopUp(index)}
+                            >
+                              <ChevronUp className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              disabled={index === optimizedRoute.length - 1}
+                              onClick={() => moveStopDown(index)}
+                            >
+                              <ChevronDown className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

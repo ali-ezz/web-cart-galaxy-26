@@ -298,6 +298,114 @@ serve(async (req) => {
         };
         break;
 
+      case "get_earnings":
+        // Get earnings data for a delivery person
+        const earningsUserId = user.id;
+
+        // In a real implementation, you would have a table for earnings
+        // For this implementation, we'll calculate earnings based on completed deliveries
+        const { data: completedDeliveries, error: completedError } = await supabaseClient
+          .from('delivery_assignments')
+          .select(`
+            id,
+            delivered_at,
+            order_id,
+            order:orders(total)
+          `)
+          .eq('delivery_person_id', earningsUserId)
+          .eq('status', 'delivered')
+          .order('delivered_at', { ascending: false });
+
+        if (completedError) {
+          console.error("Error fetching completed deliveries:", completedError);
+          throw completedError;
+        }
+
+        // Calculate earnings (in a real app, you would have a proper earnings system)
+        const earningsData = completedDeliveries?.map((delivery: any) => ({
+          id: delivery.id,
+          date: delivery.delivered_at,
+          order_id: delivery.order_id,
+          // Assume delivery person gets 10% of the order value
+          amount: delivery.order?.total ? Number(delivery.order.total) * 0.1 : 0,
+          status: 'paid'
+        })) || [];
+
+        result = { earnings: earningsData };
+        break;
+
+      case "get_schedule":
+        // Get delivery schedule for a delivery person
+        const scheduleUserId = user.id;
+
+        // In a real app, you would have a table for schedules
+        // Here we'll return a mock schedule
+        const today = new Date();
+        const weekSchedule = [
+          { day: 'Monday', slots: [{ start: '09:00', end: '17:00', available: true }] },
+          { day: 'Tuesday', slots: [{ start: '09:00', end: '17:00', available: true }] },
+          { day: 'Wednesday', slots: [{ start: '09:00', end: '17:00', available: true }] },
+          { day: 'Thursday', slots: [{ start: '09:00', end: '17:00', available: true }] },
+          { day: 'Friday', slots: [
+            { start: '09:00', end: '17:00', available: true },
+            { start: '18:00', end: '22:00', available: true }
+          ]},
+          { day: 'Saturday', slots: [{ start: '10:00', end: '18:00', available: true }] },
+          { day: 'Sunday', slots: [{ start: '10:00', end: '16:00', available: false }] },
+        ];
+
+        result = { schedule: weekSchedule };
+        break;
+
+      case "update_schedule":
+        // Update delivery schedule
+        const updateScheduleUserId = user.id;
+        const { schedule } = params;
+
+        if (!schedule) {
+          throw new Error("Missing schedule parameter");
+        }
+
+        // In a real app, you would update the schedule in the database
+        // For this demo, we'll just return success
+
+        result = { success: true, message: "Schedule updated successfully" };
+        break;
+
+      case "get_delivery_routes":
+        // Get optimized delivery routes for assigned orders
+        const routesUserId = user.id;
+
+        const { data: assignedOrders, error: assignedOrdersError } = await supabaseClient
+          .from('delivery_assignments')
+          .select(`
+            id,
+            order_id,
+            order:orders(shipping_address, shipping_city, shipping_state, shipping_postal_code)
+          `)
+          .eq('delivery_person_id', routesUserId)
+          .eq('status', 'assigned');
+
+        if (assignedOrdersError) {
+          console.error("Error fetching assigned orders:", assignedOrdersError);
+          throw assignedOrdersError;
+        }
+
+        // In a real app, you would use a routing algorithm or service
+        // For this demo, we'll just return the assignments with sequence numbers
+        const routes = assignedOrders?.map((assignment: any, index: number) => ({
+          id: assignment.id,
+          order_id: assignment.order_id,
+          address: assignment.order?.shipping_address,
+          city: assignment.order?.shipping_city,
+          state: assignment.order?.shipping_state,
+          postal_code: assignment.order?.shipping_postal_code,
+          sequence: index + 1
+        })) || [];
+
+        result = { routes };
+        break;
+
       default:
         throw new Error(`Unknown action: ${action}`);
     }
