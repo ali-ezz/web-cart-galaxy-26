@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
@@ -45,46 +46,46 @@ export default function DeliveryRoutesPage() {
 
   const { data: activeRoutes, isLoading, error } = useQuery({
     queryKey: ['deliveryRoutes', user?.id],
-    queryFn: async () => {
+    queryFn: async (): Promise<Order[]> => { // Add explicit return type
       if (!user?.id) return [] as Order[];
       
       try {
-        // Get active deliveries using type annotations to avoid inference issues
-        const { data, error } = await supabase
+        const { data: rawData, error: fetchError } = await supabase
           .from('orders')
           .select('*')
           .eq('delivery_person_id', user.id)
           .eq('status', 'out_for_delivery')
           .order('created_at', { ascending: false });
         
-        if (error) throw error;
+        if (fetchError) throw fetchError;
         
-        // Use explicit type assertion to avoid deep inference
-        const ordersData = (data || []) as unknown as RawOrder[];
+        // Type the raw data explicitly to break deep inference
+        const ordersData = rawData as any[] || [];
         
         if (ordersData.length === 0) return [] as Order[];
         
-        // Process orders with explicit typing
-        const processedOrders = await Promise.all(
-          ordersData.map(async (order, index): Promise<Order> => {
-            // Get customer name with explicit typing
-            const profileQuery = await supabase
+        // Use a more direct approach for Promise.all
+        const processedOrders: Order[] = await Promise.all(
+          ordersData.map(async (rawOrder, index) => {
+            const order = rawOrder as RawOrder;
+            
+            const { data: profileData } = await supabase
               .from('profiles')
               .select('first_name, last_name')
               .eq('id', order.user_id)
               .single();
             
+            // Process profile data with explicit types
             let customerName = 'Unknown Customer';
-            
-            if (profileQuery.data) {
-              const profile = profileQuery.data as CustomerProfile;
+            if (profileData) {
+              const profile = profileData as CustomerProfile;
               const firstName = profile.first_name || '';
               const lastName = profile.last_name || '';
               customerName = `${firstName} ${lastName}`.trim() || 'Unknown Customer';
             }
             
-            // Return explicitly typed Order object
-            return {
+            // Create order object with explicit type
+            const processedOrder: Order = {
               id: order.id,
               created_at: order.created_at,
               status: order.status,
@@ -95,6 +96,8 @@ export default function DeliveryRoutesPage() {
               customer_name: customerName,
               stopNumber: index + 1
             };
+            
+            return processedOrder;
           })
         );
         
