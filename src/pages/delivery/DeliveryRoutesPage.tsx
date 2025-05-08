@@ -51,17 +51,17 @@ export default function DeliveryRoutesPage() {
       
       try {
         // Get active deliveries for this driver
-        const { data: ordersData, error: ordersError } = await supabase
+        const { data, error } = await supabase
           .from('orders')
           .select('*')
           .eq('delivery_person_id', user.id)
           .eq('status', 'out_for_delivery')
           .order('created_at', { ascending: false });
           
-        if (ordersError) throw ordersError;
+        if (error) throw error;
         
         // Ensure we have an array of orders (even if empty)
-        const rawOrders = ordersData || [];
+        const rawOrders = data || [];
         
         if (rawOrders.length === 0) return [];
         
@@ -69,7 +69,7 @@ export default function DeliveryRoutesPage() {
         const ordersWithDetails: Order[] = await Promise.all(
           rawOrders.map(async (order: RawOrder, index) => {
             // Get customer name from profiles table
-            const { data: profileData, error: profileError } = await supabase
+            const profileResult = await supabase
               .from('profiles')
               .select('first_name, last_name')
               .eq('id', order.user_id)
@@ -77,8 +77,8 @@ export default function DeliveryRoutesPage() {
             
             let customerName = 'Unknown Customer';
             
-            if (!profileError && profileData) {
-              const profile = profileData as CustomerProfile;
+            if (!profileResult.error && profileResult.data) {
+              const profile = profileResult.data as CustomerProfile;
               const firstName = profile.first_name || '';
               const lastName = profile.last_name || '';
               customerName = `${firstName} ${lastName}`.trim() || 'Unknown Customer';
