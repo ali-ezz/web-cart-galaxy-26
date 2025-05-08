@@ -60,17 +60,20 @@ export default function DeliveryRoutesPage() {
           
         if (error) throw error;
         
-        // Ensure we have an array of orders (even if empty)
-        // Using type assertion to avoid deep type inference
-        const orders = (data || []) as RawOrder[];
+        // Instead of inferring types, explicitly cast the data
+        // This breaks the deep type inference chain that's causing the error
+        const ordersData = data as any[] || [];
         
-        if (orders.length === 0) return [];
+        if (ordersData.length === 0) return [];
         
         // Process each order to add customer details
         const ordersWithDetails: Order[] = await Promise.all(
-          orders.map(async (order, index) => {
+          ordersData.map(async (orderData, index) => {
+            // Explicitly cast to our RawOrder type
+            const order: RawOrder = orderData;
+            
             // Get customer name from profiles table
-            const { data: profileData, error: profileError } = await supabase
+            const profileResult = await supabase
               .from('profiles')
               .select('first_name, last_name')
               .eq('id', order.user_id)
@@ -78,9 +81,12 @@ export default function DeliveryRoutesPage() {
             
             let customerName = 'Unknown Customer';
             
-            if (!profileError && profileData) {
-              // Use type assertion to avoid deep inference
-              const profile = profileData as CustomerProfile;
+            if (!profileResult.error && profileResult.data) {
+              // Explicitly cast to our CustomerProfile type
+              const profile: CustomerProfile = {
+                first_name: profileResult.data.first_name,
+                last_name: profileResult.data.last_name
+              };
               const firstName = profile.first_name || '';
               const lastName = profile.last_name || '';
               customerName = `${firstName} ${lastName}`.trim() || 'Unknown Customer';
