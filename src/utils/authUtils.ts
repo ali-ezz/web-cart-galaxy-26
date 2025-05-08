@@ -104,9 +104,10 @@ export const verifyUserConsistency = async (userId: string): Promise<boolean> =>
     if (!profileData) {
       console.log(`No profile found for user ${userId}, creating profile`);
       
+      // FIX: Use upsert instead of insert().onConflict()
       const { error: insertProfileError } = await supabase
         .from('profiles')
-        .insert({ id: userId });
+        .upsert({ id: userId });
         
       if (insertProfileError) {
         console.error("Error creating profile:", insertProfileError);
@@ -188,12 +189,10 @@ export const repairUserEntries = async (userId: string): Promise<boolean> => {
           return false;
         }
         
-        // Make sure profile exists
+        // Make sure profile exists - FIX: Use upsert instead of insert().onConflict()
         const { error: insertProfileError } = await supabase
           .from('profiles')
-          .insert({ id: userId })
-          .onConflict('id')
-          .merge();
+          .upsert({ id: userId });
           
         if (insertProfileError) {
           console.error("Manual profile repair failed:", insertProfileError);
