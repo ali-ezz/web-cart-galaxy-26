@@ -34,16 +34,13 @@ serve(async (req) => {
           .select('*')
           .eq('status', 'paid')
           .eq('delivery_status', 'pending')
-          .not('id', 'in', (subquery) => 
-            subquery.from('delivery_assignments').select('order_id')
-          )
-          .order('created_at', { ascending: false });
+          .is('delivery_assignments.order_id', null);
         
         if (availableError) {
           console.error("Error fetching available orders:", availableError);
           throw availableError;
         }
-        result = { orders: availableOrders };
+        result = { orders: availableOrders || [] };
         break;
 
       case 'accept_delivery_order':
@@ -82,7 +79,7 @@ serve(async (req) => {
 
       case 'get_delivery_assignments':
         // Get assignments for a delivery person
-        const { delivery_person_id: assignedPerson } = data; // Renamed variable to avoid duplicate
+        const { delivery_person_id } = data;
         
         const { data: assignments, error: assignmentsError } = await supabase
           .from('delivery_assignments')
@@ -90,7 +87,7 @@ serve(async (req) => {
             *,
             order:orders(*)
           `)
-          .eq('delivery_person_id', assignedPerson)
+          .eq('delivery_person_id', delivery_person_id)
           .order('assigned_at', { ascending: false });
         
         if (assignmentsError) {
@@ -156,7 +153,7 @@ serve(async (req) => {
 
       case 'get_delivery_stats':
         // Get stats for a delivery person
-        const { delivery_person_id: statsPerson } = data; // Renamed to avoid duplicate
+        const { delivery_person_id: statsPerson } = data;
         
         console.log("Getting delivery stats for id:", statsPerson);
         

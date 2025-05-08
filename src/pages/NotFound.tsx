@@ -14,6 +14,7 @@ const NotFound = () => {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [checkingAuth, setCheckingAuth] = useState(false);
 
   useEffect(() => {
     // Log the 404 error
@@ -24,29 +25,46 @@ const NotFound = () => {
     
     // Check auth status
     const checkAuthStatus = async () => {
+      setCheckingAuth(true);
       try {
         const { data } = await supabase.auth.getSession();
         setIsLoggedIn(!!data.session);
         
         if (data.session?.user?.id) {
           // Fetch user role
-          const { data: roleData } = await supabase
+          const { data: roleData, error: roleError } = await supabase
             .from('user_roles')
             .select('role')
             .eq('user_id', data.session.user.id)
-            .single();
+            .maybeSingle();
+            
+          if (roleError) {
+            console.error("Error fetching role:", roleError);
+            toast({
+              title: "Error checking role",
+              description: "There was a problem verifying your account permissions",
+              variant: "destructive"
+            });
+          }
             
           setUserRole(roleData?.role || null);
+          console.log("NotFound page role check:", roleData?.role || "No role found");
         }
       } catch (error) {
         console.error("Error checking auth status:", error);
+        toast({
+          title: "Authentication error",
+          description: "There was a problem checking your login status",
+          variant: "destructive"
+        });
       } finally {
         setIsLoading(false);
+        setCheckingAuth(false);
       }
     };
     
     checkAuthStatus();
-  }, [location.pathname]);
+  }, [location.pathname, toast]);
 
   const handleRefresh = () => {
     window.location.reload();
@@ -125,6 +143,17 @@ const NotFound = () => {
             <div className="mt-4">
               <LoginTroubleshooting />
             </div>
+            
+            {checkingAuth ? (
+              <div className="mt-3 text-sm text-amber-700">
+                Checking your account permissions...
+              </div>
+            ) : (
+              <div className="mt-3 text-sm text-amber-700">
+                Current auth status: {isLoggedIn ? 'Logged in' : 'Not logged in'} 
+                {isLoggedIn && <>, Role: {userRole || 'Not found'}</>}
+              </div>
+            )}
           </div>
         ) : null}
         
