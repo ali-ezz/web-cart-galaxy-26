@@ -1,166 +1,109 @@
 
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { products, categories } from '@/lib/data';
-import { ProductCard } from '@/components/ProductCard';
+import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { UserRoleDebug } from '@/components/UserRoleDebug';
 
-export default function Home() {
-  // Get featured products (products with discounts)
-  const featuredProducts = products.filter(product => product.discountedPrice);
-  
-  // Get best sellers (highest rated products)
-  const bestSellers = [...products].sort((a, b) => b.rating - a.rating).slice(0, 4);
-  
-  // Get newest arrivals (for demo purposes, use the last 4 products)
-  const newArrivals = products.slice(-4);
+const Home = () => {
+  const { isAuthenticated, userRole, loading } = useAuth();
 
   return (
-    <div className="min-h-screen">
-      {/* Hero section */}
-      <section className="bg-gradient-to-r from-shop-purple-light to-white py-16">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col md:flex-row items-center">
-            <div className="md:w-1/2 mb-8 md:mb-0">
-              <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-                Shop the Latest Trends
-              </h1>
-              <p className="text-lg text-gray-700 mb-6">
-                Discover amazing products at unbeatable prices. Quality you can trust, delivered to your doorstep.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Button 
-                  className="bg-shop-purple hover:bg-shop-purple-dark text-white px-8 py-6"
-                  asChild
-                >
-                  <Link to="/category/Electronics">
-                    Shop Now
-                  </Link>
-                </Button>
-                <Button 
-                  variant="outline"
-                  className="border-shop-purple text-shop-purple hover:bg-shop-purple hover:text-white px-8 py-6"
-                  asChild
-                >
-                  <Link to="/categories">
-                    Browse Categories
-                  </Link>
-                </Button>
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto">
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold tracking-tight text-gray-900">
+            Welcome to ShopGalaxy
+          </h1>
+          <p className="mt-4 text-xl text-gray-600">
+            Your one-stop marketplace for all your shopping needs
+          </p>
+        </div>
+
+        {!isAuthenticated && !loading && (
+          <div className="bg-gradient-to-r from-shop-purple-light to-purple-100 p-6 md:p-8 rounded-xl mb-8 shadow-sm">
+            <h2 className="text-2xl font-semibold text-gray-900">Get Started Today</h2>
+            <p className="mt-2 text-gray-700">Sign up to start shopping or selling on our platform</p>
+            <div className="mt-4 space-x-4">
+              <Button asChild>
+                <Link to="/register">Create Account</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link to="/login">Log In</Link>
+              </Button>
+            </div>
+          </div>
+        )}
+        
+        {isAuthenticated && !loading && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="md:col-span-2">
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <h2 className="text-xl font-semibold text-gray-900">
+                  Welcome back, {userRole === 'admin' ? 'Admin' : 
+                              userRole === 'seller' ? 'Seller' : 
+                              userRole === 'delivery' ? 'Delivery Partner' : 
+                              'Customer'}!
+                </h2>
+                <p className="mt-2 text-gray-700">
+                  {userRole === 'admin' && 'Manage your store and users from your admin dashboard.'}
+                  {userRole === 'seller' && 'Manage your products and orders from your seller dashboard.'}
+                  {userRole === 'delivery' && 'View and manage your delivery assignments.'}
+                  {(userRole === 'customer' || !userRole) && 'Browse products and make purchases.'}
+                </p>
+                <div className="mt-4">
+                  <Button asChild>
+                    {userRole === 'admin' && <Link to="/admin">Go to Admin Dashboard</Link>}
+                    {userRole === 'seller' && <Link to="/seller">Go to Seller Dashboard</Link>}
+                    {userRole === 'delivery' && <Link to="/delivery">Go to Delivery Dashboard</Link>}
+                    {(userRole === 'customer' || !userRole) && <Link to="/account">Go to My Account</Link>}
+                  </Button>
+                </div>
               </div>
             </div>
-            <div className="md:w-1/2">
-              <img 
-                src="https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800&auto=format&fit=crop" 
-                alt="Online Shopping"
-                className="rounded-lg shadow-lg"
-              />
+            
+            <div className="flex flex-col">
+              <UserRoleDebug />
             </div>
           </div>
-        </div>
-      </section>
+        )}
+        
+        {loading && (
+          <div className="text-center p-8">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-shop-purple border-t-transparent"></div>
+            <p className="mt-4 text-gray-600">Loading...</p>
+          </div>
+        )}
 
-      {/* Categories section */}
-      <section className="py-12 bg-gray-50">
-        <div className="container mx-auto px-4">
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-2xl font-bold text-gray-900">Shop by Category</h2>
-            <Link to="/categories" className="text-shop-purple flex items-center gap-1 hover:underline">
-              View all categories <ArrowRight className="h-4 w-4" />
+        {/* Featured categories section */}
+        <div className="mt-12">
+          <h2 className="text-2xl font-semibold mb-6 text-center">Featured Categories</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Link to="/category/Electronics" className="block group">
+              <div className="aspect-square bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
+                <span className="text-lg font-medium text-gray-800">Electronics</span>
+              </div>
+            </Link>
+            <Link to="/category/Fashion" className="block group">
+              <div className="aspect-square bg-gradient-to-br from-pink-50 to-pink-100 rounded-lg flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
+                <span className="text-lg font-medium text-gray-800">Fashion</span>
+              </div>
+            </Link>
+            <Link to="/category/Home" className="block group">
+              <div className="aspect-square bg-gradient-to-br from-green-50 to-green-100 rounded-lg flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
+                <span className="text-lg font-medium text-gray-800">Home</span>
+              </div>
+            </Link>
+            <Link to="/category/Beauty" className="block group">
+              <div className="aspect-square bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
+                <span className="text-lg font-medium text-gray-800">Beauty</span>
+              </div>
             </Link>
           </div>
-          
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {categories.slice(0, 6).map((category) => (
-              <Link 
-                to={`/category/${category}`}
-                key={category} 
-                className="relative bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow group"
-              >
-                <div className="h-32 bg-gray-100 flex items-center justify-center">
-                  <span className="text-xl text-gray-800 font-medium group-hover:text-shop-purple transition-colors">
-                    {category}
-                  </span>
-                </div>
-              </Link>
-            ))}
-          </div>
         </div>
-      </section>
-
-      {/* Featured products */}
-      <section className="py-12">
-        <div className="container mx-auto px-4">
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-2xl font-bold text-gray-900">Featured Deals</h2>
-            <Link to="/deals" className="text-shop-purple flex items-center gap-1 hover:underline">
-              View all deals <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {featuredProducts.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Best sellers */}
-      <section className="py-12 bg-gray-50">
-        <div className="container mx-auto px-4">
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-2xl font-bold text-gray-900">Best Sellers</h2>
-            <Link to="/best-sellers" className="text-shop-purple flex items-center gap-1 hover:underline">
-              View all <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {bestSellers.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* New arrivals */}
-      <section className="py-12">
-        <div className="container mx-auto px-4">
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-2xl font-bold text-gray-900">New Arrivals</h2>
-            <Link to="/new-arrivals" className="text-shop-purple flex items-center gap-1 hover:underline">
-              View all <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {newArrivals.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Promotion banner */}
-      <section className="py-12 bg-shop-purple-light">
-        <div className="container mx-auto px-4">
-          <div className="text-center max-w-3xl mx-auto">
-            <h2 className="text-3xl font-bold mb-4 text-shop-purple">Free Shipping on Orders Over $50</h2>
-            <p className="text-gray-700 mb-6">
-              Limited time offer. Shop now and enjoy free shipping on all eligible orders.
-            </p>
-            <Button 
-              className="bg-shop-purple hover:bg-shop-purple-dark text-white px-8 py-6"
-              asChild
-            >
-              <Link to="/category/Electronics">
-                Shop Now
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </section>
+      </div>
     </div>
   );
-}
+};
+
+export default Home;

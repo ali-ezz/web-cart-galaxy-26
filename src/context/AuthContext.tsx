@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -24,9 +25,11 @@ interface AuthContextType {
   logout: () => Promise<void>;
   isAuthenticated: boolean;
   loading: boolean;
+  roleLoading: boolean;
   userRole: string | null;
   fetchUserRole: (userId: string) => Promise<string | null>;
   sendPasswordResetEmail: (email: string) => Promise<boolean>;
+  debugAuthState: () => any;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,8 +39,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [roleLoading, setRoleLoading] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // Return all auth state for debugging purposes
+  const debugAuthState = () => {
+    return {
+      user,
+      session,
+      isAuthenticated,
+      loading,
+      roleLoading,
+      userRole
+    };
+  };
 
   // Enhanced function to fetch user role with improved error handling
   const fetchUserRole = async (userId: string): Promise<string | null> => {
@@ -47,6 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     
     try {
+      setRoleLoading(true);
       console.log(`Fetching role for user: ${userId}`);
       
       // First check if user exists in user_roles table
@@ -78,6 +95,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
             
             setUserRole('customer');
+            toast({
+              title: "Default Role Assigned",
+              description: "You've been assigned a customer role by default."
+            });
             return 'customer';
           } catch (insertError) {
             console.error("Exception creating default role:", insertError);
@@ -103,6 +124,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           
           if (insertError) {
             console.error("Error creating default role:", insertError);
+          } else {
+            toast({
+              title: "Default Role Assigned",
+              description: "You've been assigned a customer role by default."
+            });
           }
         } catch (insertError) {
           console.error("Exception creating default role:", insertError);
@@ -114,6 +140,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error("Exception in fetchUserRole:", error);
       return null;
+    } finally {
+      setRoleLoading(false);
     }
   };
 
@@ -329,11 +357,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           if (userRoleError) {
             console.error("Error setting user role:", userRoleError);
-            toast({
-              title: "Warning",
-              description: "Account created but role could not be set. Default role will be used.",
-              variant: "default",
-            });
+            
+            // Try a second time with a small delay
+            setTimeout(async () => {
+              const { error: retryError } = await supabase
+                .from('user_roles')
+                .insert({ 
+                  user_id: authData.user.id, 
+                  role: role 
+                });
+                
+              if (retryError) {
+                console.error("Second attempt to set role failed:", retryError);
+                toast({
+                  title: "Warning",
+                  description: "Account created but role could not be set. Default role will be used.",
+                  variant: "default",
+                });
+              } else {
+                console.log("Second attempt to set role succeeded");
+                setUserRole(role);
+              }
+            }, 500);
+          } else {
+            setUserRole(role);
           }
         } catch (roleError: any) {
           console.error("Error setting user role:", roleError);
@@ -446,9 +493,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logout, 
       isAuthenticated,
       loading,
+      roleLoading,
       userRole,
       fetchUserRole,
-      sendPasswordResetEmail
+      sendPasswordResetEmail,
+      debugAuthState
     }}>
       {children}
     </AuthContext.Provider>
