@@ -80,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.warn(`No role found for user ${userId}, creating default customer role`);
           
           // Try to get role from user metadata first (for SSO users)
-          let roleToAssign = 'customer';
+          let roleToAssign: UserRole = 'customer';
           
           // If we have a session, check if there's a role in user metadata
           const { data: sessionData } = await supabase.auth.getSession();
@@ -88,7 +88,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           
           if (userMetadata && userMetadata.role_request) {
             console.log(`Found role_request in user metadata: ${userMetadata.role_request}`);
-            roleToAssign = userMetadata.role_request;
+            // Need to ensure roleToAssign is of type UserRole
+            const requestedRole = userMetadata.role_request as string;
+            if (requestedRole === 'admin' || 
+                requestedRole === 'customer' || 
+                requestedRole === 'seller' || 
+                requestedRole === 'delivery') {
+              roleToAssign = requestedRole as UserRole;
+            }
           }
           
           // Create a default role for the user
@@ -133,7 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const { error: insertError } = await supabase
             .from('user_roles')
-            .insert({ user_id: userId, role: 'customer' });
+            .insert({ user_id: userId, role: 'customer' as UserRole });
           
           if (insertError) {
             console.error("Error creating default role:", insertError);
