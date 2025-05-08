@@ -322,6 +322,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      repair_user_entries: {
+        Args: { user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       user_role: "admin" | "customer" | "seller" | "delivery"

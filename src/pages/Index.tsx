@@ -1,8 +1,14 @@
 
+import { Toaster } from "@/components/ui/toaster";
 import Home from './Home';
 
 const Index = () => {
-  return <Home />;
+  return (
+    <>
+      <Home />
+      <Toaster />
+    </>
+  );
 };
 
 export default Index;

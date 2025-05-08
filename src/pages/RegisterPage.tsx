@@ -12,6 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Database } from '@/integrations/supabase/types';
+import LoginTroubleshooting from '@/components/LoginTroubleshooting';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { AlertCircle, Loader2 } from 'lucide-react';
 
 // Define type for roles from database
 type UserRole = Database["public"]["Enums"]["user_role"];
@@ -68,6 +71,7 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole>('customer');
   const [questionResponses, setQuestionResponses] = useState<Record<string, string>>({});
+  const [retryCount, setRetryCount] = useState(0);
   
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -93,6 +97,12 @@ export default function RegisterPage() {
         [questions[questionIndex].question]: value
       }));
     }
+  };
+  
+  const handleRetry = () => {
+    setError('');
+    setRetryCount(prev => prev + 1);
+    form.clearErrors();
   };
   
   const onSubmit = async (data: RegisterFormValues) => {
@@ -130,8 +140,8 @@ export default function RegisterPage() {
         setError('Registration failed. Please try again.');
       }
     } catch (err: any) {
-      setError('An error occurred during registration. Please try again.');
       console.error('Registration error:', err);
+      setError('An error occurred during registration. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -149,9 +159,24 @@ export default function RegisterPage() {
         
         <Card className="p-6">
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6 text-red-600">
-              {error}
-            </div>
+            <Alert variant="destructive" className="mb-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>
+                {error}
+                {error.includes("connection") && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleRetry} 
+                    className="mt-2"
+                    disabled={loading}
+                  >
+                    Retry Connection
+                  </Button>
+                )}
+              </AlertDescription>
+            </Alert>
           )}
           
           <Form {...form}>
@@ -288,7 +313,11 @@ export default function RegisterPage() {
                 className="w-full bg-shop-purple hover:bg-shop-purple-dark py-6"
                 disabled={loading}
               >
-                {loading ? 'Creating Account...' : 'Create Account'}
+                {loading ? (
+                  <> 
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating Account...
+                  </>
+                ) : 'Create Account'}
               </Button>
               
               <div className="text-center text-sm text-gray-500">
@@ -309,6 +338,11 @@ export default function RegisterPage() {
                 Sign in
               </Link>
             </p>
+          </div>
+          
+          {/* Add LoginTroubleshooting component */}
+          <div className="flex justify-center mt-4">
+            <LoginTroubleshooting />
           </div>
         </Card>
       </div>
