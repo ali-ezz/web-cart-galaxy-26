@@ -154,10 +154,10 @@ export default function DeliveryDashboardPage() {
 
   useEffect(() => {
     // Redirect if not delivery
-    if (userRole !== 'delivery') {
+    if (user && userRole !== 'delivery') {
       navigate('/account');
     }
-  }, [userRole, navigate]);
+  }, [userRole, navigate, user]);
   
   if (!user || userRole !== 'delivery') {
     return null; // Don't render anything while redirecting

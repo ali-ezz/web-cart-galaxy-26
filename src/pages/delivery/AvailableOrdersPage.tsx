@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -51,7 +51,7 @@ export default function AvailableOrdersPage() {
       });
       
       if (error) throw error;
-      return data as Order[];
+      return data.orders as Order[];
     },
     enabled: !!user?.id,
   });

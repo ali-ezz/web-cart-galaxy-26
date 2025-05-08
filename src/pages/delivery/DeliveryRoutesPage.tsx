@@ -54,8 +54,7 @@ export default function DeliveryRoutesPage() {
         const { data, error: fetchError } = await supabase
           .from('orders')
           .select('*')
-          .eq('delivery_person_id', user.id)
-          .eq('status', 'out_for_delivery')
+          .eq('delivery_status', 'out_for_delivery')
           .order('created_at', { ascending: false });
         
         if (fetchError) throw fetchError;

@@ -36,6 +36,44 @@ export type Database = {
         }
         Relationships: []
       }
+      delivery_assignments: {
+        Row: {
+          assigned_at: string | null
+          delivered_at: string | null
+          delivery_person_id: string
+          id: string
+          notes: string | null
+          order_id: string
+          status: string
+        }
+        Insert: {
+          assigned_at?: string | null
+          delivered_at?: string | null
+          delivery_person_id: string
+          id?: string
+          notes?: string | null
+          order_id: string
+          status?: string
+        }
+        Update: {
+          assigned_at?: string | null
+          delivered_at?: string | null
+          delivery_person_id?: string
+          id?: string
+          notes?: string | null
+          order_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_assignments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_items: {
         Row: {
           created_at: string
@@ -81,6 +119,7 @@ export type Database = {
       orders: {
         Row: {
           created_at: string
+          delivery_status: string | null
           id: string
           payment_method: string | null
           shipping_address: string
@@ -96,6 +135,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          delivery_status?: string | null
           id?: string
           payment_method?: string | null
           shipping_address: string
@@ -111,6 +151,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          delivery_status?: string | null
           id?: string
           payment_method?: string | null
           shipping_address?: string

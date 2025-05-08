@@ -39,7 +39,7 @@ serve(async (req) => {
           .order('created_at', { ascending: false });
         
         if (availableError) throw availableError;
-        result = availableOrders;
+        result = { orders: availableOrders };
         break;
 
       case 'accept_delivery_order':
@@ -152,9 +152,13 @@ serve(async (req) => {
           
         if (completedError) throw completedError;
         
+        // Calculate total earnings (placeholder - this would need to be implemented based on your payment model)
+        const totalEarnings = 0; // Replace with actual calculation if available
+        
         result = { 
           assignedCount: assignedCount || 0,
-          completedCount: completedCount || 0
+          completedCount: completedCount || 0,
+          totalEarnings
         };
         break;
 
