@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
@@ -48,42 +49,47 @@ export default function DeliveryRoutesPage() {
     queryFn: async () => {
       if (!user?.id) return [];
       
-      // Using a simplified approach to avoid type instantiation issues
       try {
-        // Get active deliveries for this driver
-        const { data: rawData, error: queryError } = await supabase
+        // Get active deliveries for this driver - explicitly typed to avoid deep inference
+        const result = await supabase
           .from('orders')
           .select('*')
           .eq('delivery_person_id', user.id)
           .eq('status', 'out_for_delivery')
           .order('created_at', { ascending: false });
-          
-        if (queryError) throw queryError;
         
-        // Force type as a simple array first to avoid deep inference
-        const rawOrders = (rawData || []) as any[];
+        // Handle query error
+        if (result.error) throw result.error;
         
-        if (rawOrders.length === 0) return [];
+        // Use type assertion with a simple array type first
+        const ordersData: any[] = result.data || [];
         
-        // Process each order to add customer details
-        const processedOrders = await Promise.all(
-          rawOrders.map(async (rawOrder, index) => {
-            // Get customer name from profiles table
-            const { data: profileData, error: profileError } = await supabase
+        if (ordersData.length === 0) return [];
+        
+        // Process each order with explicit typing to add customer details
+        const processedOrders: Order[] = await Promise.all(
+          ordersData.map(async (orderData, index) => {
+            const rawOrder = orderData as RawOrder;
+            
+            // Get customer name from profiles table with explicit result typing
+            const profileResult = await supabase
               .from('profiles')
               .select('first_name, last_name')
               .eq('id', rawOrder.user_id)
               .single();
             
+            // Default customer name
             let customerName = 'Unknown Customer';
             
-            if (!profileError && profileData) {
-              const firstName = profileData.first_name || '';
-              const lastName = profileData.last_name || '';
+            // Process profile data if available
+            if (!profileResult.error && profileResult.data) {
+              const profile = profileResult.data as CustomerProfile;
+              const firstName = profile.first_name || '';
+              const lastName = profile.last_name || '';
               customerName = `${firstName} ${lastName}`.trim() || 'Unknown Customer';
             }
             
-            // Return a properly typed Order object
+            // Construct and return the processed order
             return {
               id: rawOrder.id,
               created_at: rawOrder.created_at,
@@ -94,7 +100,7 @@ export default function DeliveryRoutesPage() {
               shipping_postal_code: rawOrder.shipping_postal_code,
               customer_name: customerName,
               stopNumber: index + 1
-            } as Order;
+            };
           })
         );
         
