@@ -4,26 +4,29 @@ import Home from './Home';
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { verifyUserConsistency } from "@/utils/authUtils";
 import LoginTroubleshooting from "@/components/LoginTroubleshooting";
 import { Loader2, RefreshCw, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import AccountErrorState from "@/components/AccountErrorState";
 
 const Index = () => {
   const { isAuthenticated, userRole, loading, user, session, fetchUserRole } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshingRole, setRefreshingRole] = useState(false);
+  const [maxRetries, setMaxRetries] = useState(0);
 
   // Log component state for debugging
   useEffect(() => {
-    console.log("Index page state:", { isAuthenticated, userRole, loading, verifying, user });
-  }, [isAuthenticated, userRole, loading, verifying, user]);
+    console.log("Index page state:", { isAuthenticated, userRole, loading, verifying, user, maxRetries });
+  }, [isAuthenticated, userRole, loading, verifying, user, maxRetries]);
 
   // Handle manual role refresh
   const handleRefreshRole = async () => {
@@ -37,6 +40,11 @@ const Index = () => {
         title: "Role Updated",
         description: role ? `Your current role is: ${role}` : "No role could be detected",
       });
+
+      if (role) {
+        // Attempt redirection based on the newly fetched role
+        redirectToRoleDashboard(role);
+      }
     } catch (err) {
       console.error("Error refreshing role:", err);
       setError("Failed to refresh role. Please try the repair option.");
@@ -45,11 +53,44 @@ const Index = () => {
     }
   };
 
+  // Function to redirect based on role
+  const redirectToRoleDashboard = (role: string) => {
+    // Don't redirect if we're already redirecting
+    if (isRedirecting) return;
+    
+    setIsRedirecting(true);
+    console.log(`Redirecting based on role: ${role}`);
+    
+    // Use setTimeout to ensure state updates have been processed
+    setTimeout(() => {
+      switch (role) {
+        case 'admin':
+          navigate('/admin');
+          break;
+        case 'seller':
+          navigate('/seller');
+          break;
+        case 'delivery':
+          navigate('/delivery');
+          break;
+        case 'customer':
+          // Customer should stay on home page, just remove redirecting state
+          setIsRedirecting(false);
+          break;
+        default:
+          // For unknown roles, stay on this page but show error
+          setIsRedirecting(false);
+          setError("Unknown role detected. Please contact support.");
+          break;
+      }
+    }, 100);
+  };
+
   // Verify user data consistency when the component loads
   useEffect(() => {
+    if (loading) return;
+    
     const verifyUser = async () => {
-      if (loading) return;
-      
       // Only verify authenticated users with an ID
       if (!isAuthenticated || !user?.id) {
         console.log("User not authenticated or no user ID, skipping verification");
@@ -71,46 +112,59 @@ const Index = () => {
             description: "Some account data is missing. Use the repair option below.",
             variant: "destructive",
           });
-        } else {
-          console.log("User data is consistent");
+        } else if (userRole) {
+          console.log("User data is consistent with role:", userRole);
+          
           // Add a small delay to ensure the toast appears after the page loads
           const timer = setTimeout(() => {
             toast({
               title: "Authentication Status",
-              description: `You are logged in as ${user?.name} with role: ${userRole || 'loading...'}`,
+              description: `You are logged in as ${user?.name} with role: ${userRole}`,
             });
+            
+            // If user has a non-customer role, redirect them
+            if (userRole !== 'customer') {
+              redirectToRoleDashboard(userRole);
+            }
           }, 300);
           
           return () => clearTimeout(timer);
+        } else {
+          console.warn("User data is consistent but no role found");
+          setError("Your account appears valid but no role was found. Please use the repair option.");
         }
       } catch (error) {
         console.error("Error verifying user:", error);
+        setMaxRetries(prev => prev + 1);
         setError("There was a problem checking your account data.");
-        toast({
-          title: "Verification error",
-          description: "There was a problem checking your account data.",
-          variant: "destructive",
-        });
+        
+        if (maxRetries >= 3) {
+          toast({
+            title: "Persistent verification error",
+            description: "We're having trouble verifying your account. Please try logging out and back in.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Verification error",
+            description: "There was a problem checking your account data.",
+            variant: "destructive",
+          });
+        }
       } finally {
         setVerifying(false);
       }
     };
     
     verifyUser();
-  }, [isAuthenticated, user, loading, toast, userRole]);
+  }, [isAuthenticated, user, loading, toast, userRole, maxRetries]);
 
-  // Handle redirection for non-customer users with fallback timer
+  // Handle redirection for non-customer users
   useEffect(() => {
     if (!loading && !verifying && isAuthenticated && userRole) {
       if (userRole !== 'customer') {
-        console.log(`Detected non-customer role: ${userRole}, redirecting to welcome page...`);
-        
-        // Give a moment for the UI to update before redirecting
-        const timer = setTimeout(() => {
-          setIsRedirecting(true);
-        }, 500);
-        
-        return () => clearTimeout(timer);
+        console.log(`Detected non-customer role: ${userRole}, redirecting to appropriate dashboard...`);
+        redirectToRoleDashboard(userRole);
       } else {
         console.log("User is a customer, showing Home page");
       }
@@ -143,7 +197,8 @@ const Index = () => {
                 verifying,
                 hasUser: !!user,
                 userId: user?.id,
-                hasSession: !!session
+                hasSession: !!session,
+                retries: maxRetries
               }, null, 2)}
             </pre>
           </div>
@@ -156,6 +211,16 @@ const Index = () => {
           </div>
         )}
       </div>
+    );
+  }
+  
+  // Max retries exceeded, possibly deleted account
+  if (maxRetries >= 3) {
+    return (
+      <AccountErrorState 
+        title="Account Error" 
+        message="We're having persistent problems verifying your account. Your account may have been deleted or reset."
+      />
     );
   }
   
@@ -211,7 +276,8 @@ const Index = () => {
                   loading, 
                   hasUser: !!user,
                   userId: user?.id,
-                  hasSession: !!session
+                  hasSession: !!session,
+                  retries: maxRetries
                 }, null, 2)}
               </pre>
             </div>
@@ -229,11 +295,29 @@ const Index = () => {
       </div>
     );
   }
+
+  // Handle authentication issues - show proper error
+  if (!isAuthenticated && !loading) {
+    // Let them access the home page as a guest
+    return (
+      <>
+        <Home />
+        <Toaster />
+      </>
+    );
+  }
   
-  // Redirect non-customer users to welcome page
+  // Redirect non-customer users to appropriate dashboard
   if (isRedirecting || (isAuthenticated && userRole && userRole !== 'customer')) {
-    console.log(`Redirecting from Index to Welcome page, role: ${userRole}`);
-    return <Navigate to="/welcome" replace />;
+    console.log(`Redirecting from Index to appropriate dashboard, role: ${userRole}`);
+    
+    // A brief loading state while redirection happens
+    return (
+      <div className="flex flex-col justify-center items-center min-h-screen gap-4">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-shop-purple border-t-transparent"></div>
+        <p className="text-gray-600">Redirecting to your dashboard...</p>
+      </div>
+    );
   }
 
   // Render Home for customers or non-authenticated users

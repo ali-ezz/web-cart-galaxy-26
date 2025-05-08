@@ -17,6 +17,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useNavigate } from 'react-router-dom';
 
 interface LoginTroubleshootingProps {
   onRepair?: () => void;
@@ -28,6 +29,7 @@ export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingP
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const handleRepair = async () => {
     setRepairing(true);
@@ -35,7 +37,24 @@ export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingP
     setSuccess(null);
     
     try {
-      const { data } = await supabase.auth.getSession();
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error("Session error:", sessionError);
+        setError("Authentication error. Please try logging in again.");
+        toast({
+          title: "Authentication error",
+          description: "Your session may have expired. Please log in again.",
+          variant: "destructive",
+        });
+        
+        // Redirect to login after a brief delay
+        setTimeout(() => {
+          navigate('/login');
+        }, 2000);
+        
+        return;
+      }
       
       if (data.session?.user) {
         const userId = data.session.user.id;
@@ -82,6 +101,11 @@ export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingP
           description: "You need to be logged in to repair your account.",
           variant: "destructive",
         });
+        
+        // Redirect to login after a brief delay
+        setTimeout(() => {
+          navigate('/login');
+        }, 2000);
       }
     } catch (error) {
       console.error("Error during repair:", error);
@@ -91,6 +115,11 @@ export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingP
         description: "An unexpected error occurred during repair.",
         variant: "destructive",
       });
+      
+      // Redirect to login after a brief delay for any unexpected errors
+      setTimeout(() => {
+        navigate('/login');
+      }, 2000);
     } finally {
       setRepairing(false);
     }
@@ -130,6 +159,7 @@ export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingP
             <li>Missing user role after registration</li>
             <li>Blank white screen after login</li>
             <li>Not being directed to the correct dashboard</li>
+            <li>Account may have been deleted or reset</li>
             <li>Social login users with incorrect roles</li>
           </ul>
         </div>

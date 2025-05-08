@@ -11,6 +11,7 @@ import { Database } from "@/integrations/supabase/types";
 import { verifyUserConsistency } from "@/utils/authUtils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import LoginTroubleshooting from "@/components/LoginTroubleshooting";
+import AccountErrorState from "@/components/AccountErrorState";
 
 // Define the UserRole type to ensure consistency
 type UserRole = Database["public"]["Enums"]["user_role"];
@@ -24,11 +25,13 @@ export default function WelcomePage() {
   const [error, setError] = useState<string | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [refreshingRole, setRefreshingRole] = useState(false);
+  const [maxRetries, setMaxRetries] = useState(0);
+  const [lastRedirectAttempt, setLastRedirectAttempt] = useState<number | null>(null);
   
   // Log component state for debugging
   useEffect(() => {
-    console.log("Welcome page state:", { isAuthenticated, userRole, loading, user, verifyingUser });
-  }, [isAuthenticated, userRole, loading, user, verifyingUser]);
+    console.log("Welcome page state:", { isAuthenticated, userRole, loading, user, verifyingUser, maxRetries });
+  }, [isAuthenticated, userRole, loading, user, verifyingUser, maxRetries]);
   
   // Handle manual role refresh
   const handleRefreshRole = async () => {
@@ -44,12 +47,15 @@ export default function WelcomePage() {
       });
       
       // Wait a moment and then try to navigate based on the new role
-      setTimeout(() => {
-        navigateToRoleDashboard();
-      }, 1000);
+      if (role) {
+        setTimeout(() => {
+          navigateToRoleDashboard();
+        }, 1000);
+      }
     } catch (err) {
       console.error("Error refreshing role:", err);
       setError("Failed to refresh role. Please try the repair option.");
+      setMaxRetries(prev => prev + 1);
     } finally {
       setRefreshingRole(false);
     }
@@ -73,6 +79,7 @@ export default function WelcomePage() {
       if (!isConsistent) {
         console.warn("User verification failed on welcome page");
         setError("Your account data couldn't be verified. Please use the repair option below.");
+        setMaxRetries(prev => prev + 1);
         return false;
       }
       
@@ -85,6 +92,7 @@ export default function WelcomePage() {
     } catch (err) {
       console.error("Exception verifying user:", err);
       setError("An unexpected error occurred. Please try the repair option.");
+      setMaxRetries(prev => prev + 1);
       return false;
     } finally {
       setVerifyingUser(false);
@@ -96,26 +104,36 @@ export default function WelcomePage() {
     if (isAuthenticated && user?.id && !loading) {
       verifyUserExists();
     }
-  }, [isAuthenticated, user, loading, fetchUserRole]);
+  }, [isAuthenticated, user, loading]);
   
   // Function to handle role-based navigation with improved error handling
   const navigateToRoleDashboard = async () => {
+    // Prevent repeated redirect attempts within a short time window
+    const now = Date.now();
+    if (lastRedirectAttempt && now - lastRedirectAttempt < 2000) {
+      console.log("Ignoring rapid redirect attempt");
+      return;
+    }
+    
     setIsRedirecting(true);
+    setLastRedirectAttempt(now);
     setError(null);
     
     try {
-      // Verify user exists in database
-      const userExists = await verifyUserExists();
-      if (!userExists) {
-        console.warn("User validation failed, redirecting to login");
-        toast({
-          title: "Account Problem",
-          description: "There was a problem with your account. Please log in again.",
-          variant: "destructive",
-        });
-        await supabase.auth.signOut();
-        navigate("/login");
-        return;
+      // Verify user exists in database if we haven't done it recently
+      if (maxRetries < 3) {
+        const userExists = await verifyUserExists();
+        if (!userExists) {
+          console.warn("User validation failed, redirecting to login");
+          toast({
+            title: "Account Problem",
+            description: "There was a problem with your account. Please log in again.",
+            variant: "destructive",
+          });
+          await supabase.auth.signOut();
+          navigate("/login");
+          return;
+        }
       }
       
       // Add a small delay to ensure userRole is updated
@@ -151,18 +169,36 @@ export default function WelcomePage() {
       console.error("Navigation error:", error);
       setError("Could not navigate to your dashboard. Please try the repair option.");
       setIsRedirecting(false);
+      setMaxRetries(prev => prev + 1);
     }
   };
 
+  // Handle authentication changes
   useEffect(() => {
     // If loading is complete and we have authentication info, proceed
     if (!loading) {
       if (!isAuthenticated) {
         console.log("User not authenticated, redirecting to login");
         navigate("/login");
+      } else if (userRole) {
+        // If we have a role and we're not already redirecting, navigate based on role
+        if (!isRedirecting) {
+          console.log(`User authenticated with role ${userRole}, proceeding to navigation`);
+          // Don't redirect immediately, let the user see the welcome page first
+        }
       }
     }
-  }, [isAuthenticated, loading, navigate]);
+  }, [isAuthenticated, userRole, loading]);
+
+  // If too many retries, account is likely deleted or has serious issues
+  if (maxRetries >= 3) {
+    return (
+      <AccountErrorState 
+        title="Account Issues Detected" 
+        message="We're having persistent problems verifying your account. Your account may have been deleted or reset."
+      />
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-20">
@@ -255,7 +291,9 @@ export default function WelcomePage() {
                       loading, 
                       verifyingUser,
                       hasUser: !!user,
-                      userId: user?.id
+                      userId: user?.id,
+                      retries: maxRetries,
+                      redirecting: isRedirecting
                     }, null, 2)}
                   </pre>
                 </div>
