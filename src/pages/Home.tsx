@@ -4,9 +4,34 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { UserRoleDebug } from '@/components/UserRoleDebug';
+import { Card, CardContent } from '@/components/ui/card';
 
 const Home = () => {
   const { isAuthenticated, userRole, loading } = useAuth();
+
+  // Sample product categories with images
+  const categories = [
+    { 
+      name: "Electronics", 
+      image: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5",
+      gradient: "from-blue-50 to-blue-100" 
+    },
+    { 
+      name: "Fashion", 
+      image: "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158",
+      gradient: "from-pink-50 to-pink-100" 
+    },
+    { 
+      name: "Home", 
+      image: "https://images.unsplash.com/photo-1531297484001-80022131f5a1",
+      gradient: "from-green-50 to-green-100" 
+    },
+    { 
+      name: "Beauty", 
+      image: "https://images.unsplash.com/photo-1488590528505-98d2b5aba04b",
+      gradient: "from-purple-50 to-purple-100"
+    },
+  ];
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -75,30 +100,28 @@ const Home = () => {
           </div>
         )}
 
-        {/* Featured categories section */}
+        {/* Featured categories section with images */}
         <div className="mt-12">
           <h2 className="text-2xl font-semibold mb-6 text-center">Featured Categories</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Link to="/category/Electronics" className="block group">
-              <div className="aspect-square bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
-                <span className="text-lg font-medium text-gray-800">Electronics</span>
-              </div>
-            </Link>
-            <Link to="/category/Fashion" className="block group">
-              <div className="aspect-square bg-gradient-to-br from-pink-50 to-pink-100 rounded-lg flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
-                <span className="text-lg font-medium text-gray-800">Fashion</span>
-              </div>
-            </Link>
-            <Link to="/category/Home" className="block group">
-              <div className="aspect-square bg-gradient-to-br from-green-50 to-green-100 rounded-lg flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
-                <span className="text-lg font-medium text-gray-800">Home</span>
-              </div>
-            </Link>
-            <Link to="/category/Beauty" className="block group">
-              <div className="aspect-square bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
-                <span className="text-lg font-medium text-gray-800">Beauty</span>
-              </div>
-            </Link>
+            {categories.map((category, index) => (
+              <Link key={index} to={`/category/${category.name}`} className="block group">
+                <Card className="overflow-hidden hover:shadow-md transition-shadow">
+                  <div className="aspect-square relative">
+                    <img 
+                      src={category.image} 
+                      alt={category.name} 
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end">
+                      <CardContent className="p-3">
+                        <h3 className="text-lg font-medium text-white">{category.name}</h3>
+                      </CardContent>
+                    </div>
+                  </div>
+                </Card>
+              </Link>
+            ))}
           </div>
         </div>
       </div>

@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   };
 
-  // Enhanced function to fetch user role with improved error handling
+  // Enhanced function to fetch user role with improved error handling and SSO support
   const fetchUserRole = async (userId: string): Promise<string | null> => {
     if (!userId) {
       console.warn("fetchUserRole called with no userId");
@@ -78,11 +78,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         if (error.code === 'PGRST116') {
           console.warn(`No role found for user ${userId}, creating default customer role`);
-          // Create a default customer role for the user
+          
+          // Try to get role from user metadata first (for SSO users)
+          let roleToAssign = 'customer';
+          
+          // If we have a session, check if there's a role in user metadata
+          const { data: sessionData } = await supabase.auth.getSession();
+          const userMetadata = sessionData?.session?.user?.user_metadata;
+          
+          if (userMetadata && userMetadata.role_request) {
+            console.log(`Found role_request in user metadata: ${userMetadata.role_request}`);
+            roleToAssign = userMetadata.role_request;
+          }
+          
+          // Create a default role for the user
           try {
             const { error: insertError } = await supabase
               .from('user_roles')
-              .insert({ user_id: userId, role: 'customer' });
+              .insert({ user_id: userId, role: roleToAssign });
             
             if (insertError) {
               console.error("Error creating default role:", insertError);
@@ -94,12 +107,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               return 'customer'; // Still return customer as default
             }
             
-            setUserRole('customer');
+            setUserRole(roleToAssign);
             toast({
-              title: "Default Role Assigned",
-              description: "You've been assigned a customer role by default."
+              title: "Role Assigned",
+              description: `You've been assigned a ${roleToAssign} role.`
             });
-            return 'customer';
+            return roleToAssign;
           } catch (insertError) {
             console.error("Exception creating default role:", insertError);
             return 'customer'; // Still return customer as default
@@ -156,32 +169,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(currentSession);
         
         if (currentSession?.user) {
+          // Extract name from metadata with fallbacks for SSO providers
+          const userName = currentSession.user.user_metadata?.name || 
+                          currentSession.user.user_metadata?.full_name || 
+                          currentSession.user.user_metadata?.preferred_username || 
+                          currentSession.user.email?.split('@')[0] || 
+                          'User';
+          
           const userData = {
             id: currentSession.user.id,
-            name: currentSession.user.user_metadata?.name || currentSession.user.email?.split('@')[0] || 'User',
+            name: userName,
             email: currentSession.user.email || '',
           };
           
           setUser(userData);
           setIsAuthenticated(true);
           
-          // Verify user consistency on auth state change
-          setTimeout(async () => {
-            // Verify and repair user data if needed
-            const isConsistent = await verifyUserConsistency(currentSession.user.id);
-            if (isConsistent) {
-              // If consistent, fetch the role
-              const role = await fetchUserRole(currentSession.user.id);
-              console.log(`User role after auth state change: ${role}`);
-            } else {
-              console.error("User data is inconsistent");
-              toast({
-                title: "Account issue detected",
-                description: "There may be a problem with your account data.",
-                variant: "destructive",
-              });
-            }
-          }, 100);
+          // Handle SSO signup events
+          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+            // Verify user consistency on auth state change
+            setTimeout(async () => {
+              // Verify and repair user data if needed
+              const isConsistent = await verifyUserConsistency(currentSession.user.id);
+              if (isConsistent) {
+                // If consistent, fetch the role
+                const role = await fetchUserRole(currentSession.user.id);
+                console.log(`User role after auth state change: ${role}`);
+              } else {
+                console.error("User data is inconsistent");
+                toast({
+                  title: "Account issue detected",
+                  description: "There may be a problem with your account data.",
+                  variant: "destructive",
+                });
+              }
+            }, 100);
+          }
         } else {
           setUser(null);
           setIsAuthenticated(false);
@@ -223,9 +246,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return;
           }
           
+          // Extract name from metadata with fallbacks for SSO providers
+          const userName = existingSession.user.user_metadata?.name || 
+                          existingSession.user.user_metadata?.full_name || 
+                          existingSession.user.user_metadata?.preferred_username || 
+                          existingSession.user.email?.split('@')[0] || 
+                          'User';
+          
           const userData = {
             id: existingSession.user.id,
-            name: existingSession.user.user_metadata?.name || existingSession.user.email?.split('@')[0] || 'User',
+            name: userName,
             email: existingSession.user.email || '',
           };
           

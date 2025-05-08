@@ -6,7 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
 const Index = () => {
-  const { isAuthenticated, userRole, loading } = useAuth();
+  const { isAuthenticated, userRole, loading, user } = useAuth();
   const { toast } = useToast();
 
   // Display a toast with user role information when loaded
@@ -14,10 +14,10 @@ const Index = () => {
     if (!loading && isAuthenticated && userRole) {
       toast({
         title: "Authentication Status",
-        description: `You are logged in as a ${userRole}`,
+        description: `You are logged in as ${user?.name} with role: ${userRole}`,
       });
     }
-  }, [isAuthenticated, userRole, loading]);
+  }, [isAuthenticated, userRole, loading, user]);
 
   return (
     <>
