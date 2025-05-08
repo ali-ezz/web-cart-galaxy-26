@@ -13,42 +13,44 @@ const Index = () => {
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [verifying, setVerifying] = useState(false);
 
-  // Display a toast with user role information when loaded
+  // Verify user data consistency when the component loads
   useEffect(() => {
-    if (!loading && isAuthenticated && user) {
-      // Verify the user data consistency first
-      const verifyUser = async () => {
-        setVerifying(true);
-        if (user.id) {
-          const isConsistent = await verifyUserConsistency(user.id);
-          if (!isConsistent) {
-            toast({
-              title: "Account issue detected",
-              description: "Some account data is missing. Attempting to repair...",
-              variant: "destructive",
-            });
-          }
-        }
-        setVerifying(false);
-      };
+    const verifyUser = async () => {
+      if (loading || !isAuthenticated || !user?.id) return;
       
-      verifyUser();
+      setVerifying(true);
+      console.log("Verifying user consistency on Index page...");
       
-      // Add a small delay to ensure the toast appears after the page loads
-      const timer = setTimeout(() => {
+      const isConsistent = await verifyUserConsistency(user.id);
+      
+      if (!isConsistent) {
         toast({
-          title: "Authentication Status",
-          description: `You are logged in as ${user?.name} with role: ${userRole || 'loading...'}`,
+          title: "Account issue detected",
+          description: "Some account data is missing. Attempting to repair...",
+          variant: "destructive",
         });
-      }, 300);
+      } else {
+        // Add a small delay to ensure the toast appears after the page loads
+        const timer = setTimeout(() => {
+          toast({
+            title: "Authentication Status",
+            description: `You are logged in as ${user?.name} with role: ${userRole || 'loading...'}`,
+          });
+        }, 300);
+        
+        return () => clearTimeout(timer);
+      }
       
-      return () => clearTimeout(timer);
-    }
-  }, [isAuthenticated, userRole, loading, user, toast]);
+      setVerifying(false);
+    };
+    
+    verifyUser();
+  }, [isAuthenticated, user, loading, toast]);
 
   // Handle redirection for non-customer users
   useEffect(() => {
     if (!loading && !verifying && isAuthenticated && userRole && userRole !== 'customer') {
+      console.log(`Detected non-customer role: ${userRole}, redirecting to welcome page...`);
       setIsRedirecting(true);
       // Give a moment for the UI to update before redirecting
       const timer = setTimeout(() => {
