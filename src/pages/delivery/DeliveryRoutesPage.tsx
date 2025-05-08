@@ -21,8 +21,8 @@ interface Order {
   stopNumber?: number;
 }
 
-// Basic order type from database without processing
-interface RawOrder {
+// Define database order type with explicit fields needed
+interface DbOrder {
   id: string;
   created_at: string;
   status: string;
@@ -31,11 +31,10 @@ interface RawOrder {
   shipping_city: string;
   shipping_state: string;
   shipping_postal_code: string;
-  [key: string]: any; // Allow for other properties
 }
 
-// Customer profile type from database
-interface CustomerProfile {
+// Define profile type with only needed fields
+interface DbProfile {
   first_name?: string;
   last_name?: string;
 }
@@ -47,11 +46,11 @@ export default function DeliveryRoutesPage() {
   const { data: activeRoutes, isLoading, error } = useQuery({
     queryKey: ['deliveryRoutes', user?.id],
     queryFn: async () => {
-      // Early return with explicit type if no user
+      // Return empty array if no user
       if (!user?.id) return [] as Order[];
       
       try {
-        // Fetch orders with explicit typing
+        // Type explicitly with DbOrder[] to avoid deep inference
         const { data, error: fetchError } = await supabase
           .from('orders')
           .select('*')
@@ -61,34 +60,38 @@ export default function DeliveryRoutesPage() {
         
         if (fetchError) throw fetchError;
         
-        // Handle no data case
-        const ordersData = data || [];
+        // Cast raw data to DbOrder[] to provide clear type boundaries
+        const ordersData = (data || []) as DbOrder[];
+        
         if (ordersData.length === 0) return [] as Order[];
         
-        // Use simple array and map with explicit return type
-        const orders: Order[] = [];
+        // Use simple array with clear type
+        const processedOrders: Order[] = [];
         
-        // Process each order sequentially to avoid complex typing
+        // Process each order one at a time
         for (let i = 0; i < ordersData.length; i++) {
           const order = ordersData[i];
           
-          // Get customer profile data
+          // Get profile data with explicit type for response
           const { data: profileData } = await supabase
             .from('profiles')
             .select('first_name, last_name')
             .eq('id', order.user_id)
             .single();
           
-          // Process customer name
+          // Set default name
           let customerName = 'Unknown Customer';
+          
+          // Process name if profile data exists
           if (profileData) {
-            const firstName = profileData.first_name || '';
-            const lastName = profileData.last_name || '';
+            const profile = profileData as DbProfile;
+            const firstName = profile.first_name || '';
+            const lastName = profile.last_name || '';
             customerName = `${firstName} ${lastName}`.trim() || 'Unknown Customer';
           }
           
-          // Add processed order with explicit structure
-          orders.push({
+          // Build order with explicit fields to avoid inference issues
+          processedOrders.push({
             id: order.id,
             created_at: order.created_at,
             status: order.status,
@@ -101,7 +104,7 @@ export default function DeliveryRoutesPage() {
           });
         }
         
-        return orders;
+        return processedOrders;
       } catch (error) {
         console.error('Error fetching delivery routes:', error);
         throw error;
