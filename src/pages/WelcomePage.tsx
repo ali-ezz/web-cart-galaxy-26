@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, ShoppingBag, Package, Truck, LayoutDashboard, AlertCircle } from "lucide-react";
+import { Loader2, ShoppingBag, Package, Truck, LayoutDashboard, AlertCircle, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Database } from "@/integrations/supabase/types";
@@ -23,11 +23,37 @@ export default function WelcomePage() {
   const [verifyingUser, setVerifyingUser] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDebug, setShowDebug] = useState(false);
+  const [refreshingRole, setRefreshingRole] = useState(false);
   
   // Log component state for debugging
   useEffect(() => {
     console.log("Welcome page state:", { isAuthenticated, userRole, loading, user, verifyingUser });
   }, [isAuthenticated, userRole, loading, user, verifyingUser]);
+  
+  // Handle manual role refresh
+  const handleRefreshRole = async () => {
+    if (!user?.id) return;
+    
+    setRefreshingRole(true);
+    setError(null);
+    try {
+      const role = await fetchUserRole(user.id);
+      toast({
+        title: "Role Updated",
+        description: role ? `Your current role is: ${role}` : "No role could be detected",
+      });
+      
+      // Wait a moment and then try to navigate based on the new role
+      setTimeout(() => {
+        navigateToRoleDashboard();
+      }, 1000);
+    } catch (err) {
+      console.error("Error refreshing role:", err);
+      setError("Failed to refresh role. Please try the repair option.");
+    } finally {
+      setRefreshingRole(false);
+    }
+  };
   
   // Function to verify the user exists in the database with improved error handling
   const verifyUserExists = async () => {
@@ -46,7 +72,7 @@ export default function WelcomePage() {
       
       if (!isConsistent) {
         console.warn("User verification failed on welcome page");
-        setError("Your account data couldn't be verified. Please try logging out and back in.");
+        setError("Your account data couldn't be verified. Please use the repair option below.");
         return false;
       }
       
@@ -58,7 +84,7 @@ export default function WelcomePage() {
       return true;
     } catch (err) {
       console.error("Exception verifying user:", err);
-      setError("An unexpected error occurred. Please try again.");
+      setError("An unexpected error occurred. Please try the repair option.");
       return false;
     } finally {
       setVerifyingUser(false);
@@ -120,10 +146,10 @@ export default function WelcomePage() {
             navigate("/");
             break;
         }
-      }, 500); // Short delay to ensure userRole is properly loaded
+      }, 300); // Short delay to ensure userRole is properly loaded
     } catch (error) {
       console.error("Navigation error:", error);
-      setError("Could not navigate to your dashboard. Please try again.");
+      setError("Could not navigate to your dashboard. Please try the repair option.");
       setIsRedirecting(false);
     }
   };
@@ -142,7 +168,7 @@ export default function WelcomePage() {
     <div className="container mx-auto px-4 py-20">
       <Card className="w-full max-w-md mx-auto">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-shop-purple">Welcome to UniMarket</CardTitle>
+          <CardTitle className="text-2xl font-bold text-shop-purple">Welcome to ShopGalaxy</CardTitle>
           <CardDescription>Everything you need, all in one place</CardDescription>
         </CardHeader>
         
@@ -189,6 +215,26 @@ export default function WelcomePage() {
                 </div>
               </div>
               
+              {/* Role refresh option */}
+              {error && (
+                <Button 
+                  onClick={handleRefreshRole} 
+                  disabled={refreshingRole}
+                  variant="outline" 
+                  className="w-full"
+                >
+                  {refreshingRole ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Refreshing...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4" /> Refresh Role
+                    </>
+                  )}
+                </Button>
+              )}
+              
               {/* Debug information toggle */}
               <div className="mt-4 text-center">
                 <button 
@@ -226,7 +272,7 @@ export default function WelcomePage() {
         <CardFooter>
           <Button 
             onClick={navigateToRoleDashboard} 
-            disabled={loading || verifyingUser || isRedirecting} 
+            disabled={loading || verifyingUser || isRedirecting || refreshingRole} 
             className="w-full"
           >
             {isRedirecting ? (

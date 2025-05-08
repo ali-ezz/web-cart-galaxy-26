@@ -4,7 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Session, User as AuthUser } from "@supabase/supabase-js";
 import { Database } from "@/integrations/supabase/types";
-import { verifyUserConsistency } from "@/utils/authUtils";
+import { verifyUserConsistency, repairUserEntries } from "@/utils/authUtils";
 
 // Define our own User type to match what we get from Supabase
 interface User {
@@ -66,91 +66,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setRoleLoading(true);
       console.log(`Fetching role for user: ${userId}`);
       
-      // First check if user exists in user_roles table
+      // Fetch user role with explicit ordering to ensure we get the most recent role
       const { data, error } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', userId)
+        .order('created_at', { ascending: false })
         .maybeSingle();
       
       if (error) {
         console.error("Error fetching user role:", error);
         
         if (error.code === 'PGRST116') {
-          console.warn(`No role found for user ${userId}, creating default customer role`);
+          console.warn(`No role found for user ${userId}, triggering repair`);
           
-          // Try to get role from user metadata first (for SSO users)
-          let roleToAssign: UserRole = 'customer';
+          // Use the repair function to ensure both role and profile exist
+          const isRepaired = await repairUserEntries(userId);
           
-          // If we have a session, check if there's a role in user metadata
-          const { data: sessionData } = await supabase.auth.getSession();
-          const userMetadata = sessionData?.session?.user?.user_metadata;
-          
-          if (userMetadata && userMetadata.role_request) {
-            console.log(`Found role_request in user metadata: ${userMetadata.role_request}`);
-            // Need to ensure roleToAssign is of type UserRole
-            const requestedRole = userMetadata.role_request as string;
-            if (requestedRole === 'admin' || 
-                requestedRole === 'customer' || 
-                requestedRole === 'seller' || 
-                requestedRole === 'delivery') {
-              roleToAssign = requestedRole as UserRole;
-            }
-          }
-          
-          // Create a default role for the user using RPC to avoid RLS issues
-          try {
-            console.log(`Creating default role '${roleToAssign}' for user ${userId}`);
-            const { error: repairError } = await supabase
-              .rpc('repair_user_entries', { user_id: userId });
-              
-            if (repairError) {
-              console.error("Error repairing user:", repairError);
-              
-              // Fallback: direct insert
-              const { error: insertError } = await supabase
-                .from('user_roles')
-                .insert({ 
-                  user_id: userId, 
-                  role: roleToAssign 
-                });
-              
-              if (insertError) {
-                console.error("Error creating default role:", insertError);
-                toast({
-                  title: "Error setting user role",
-                  description: "Could not set default user role. Please try logging in again.",
-                  variant: "destructive",
-                });
-                return 'customer'; // Still return customer as default
-              }
-            }
-            
-            // If role is not customer, update it after repair
-            if (roleToAssign !== 'customer') {
-              // Wait a bit for repair to complete
-              await new Promise(resolve => setTimeout(resolve, 500));
-              
-              const { error: updateError } = await supabase
-                .from('user_roles')
-                .update({ role: roleToAssign })
-                .eq('user_id', userId);
-                
-              if (updateError) {
-                console.error("Error updating role after repair:", updateError);
-              }
-            }
-            
-            setUserRole(roleToAssign);
+          if (!isRepaired) {
+            console.error("Failed to repair user data");
             toast({
-              title: "Role Assigned",
-              description: `You've been assigned a ${roleToAssign} role.`
+              title: "Account issue detected",
+              description: "Could not set user role. Try the Repair button on the login page.",
+              variant: "destructive",
             });
-            return roleToAssign;
-          } catch (insertError) {
-            console.error("Exception creating default role:", insertError);
-            return 'customer'; // Still return customer as default
+            return 'customer'; // Default role as fallback
           }
+          
+          // Try fetching the role again after repair
+          const { data: retrievedData, error: retrievedError } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', userId)
+            .maybeSingle();
+            
+          if (retrievedError || !retrievedData) {
+            console.error("Still could not get role after repair:", retrievedError);
+            toast({
+              title: "Default Role Assigned",
+              description: "Using customer role as default. Role assignment failed."
+            });
+            setUserRole('customer');
+            return 'customer';
+          }
+          
+          console.log(`Role successfully retrieved after repair: ${retrievedData.role}`);
+          setUserRole(retrievedData.role);
+          return retrievedData.role;
         }
         
         return null;
@@ -241,11 +203,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 console.error("User data is inconsistent");
                 toast({
                   title: "Account issue detected",
-                  description: "There may be a problem with your account data.",
+                  description: "There may be a problem with your account data. Please use the Repair button.",
                   variant: "destructive",
                 });
               }
-            }, 100);
+            }, 0);
           }
         } else {
           setUser(null);
@@ -299,11 +261,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(existingSession);
           setIsAuthenticated(true);
           
-          // Fetch user role with a delay to avoid state update issues
-          setTimeout(async () => {
-            const role = await fetchUserRole(existingSession.user.id);
-            console.log(`Initial role fetch complete: ${role}`);
-          }, 100);
+          // Fetch user role immediately
+          const role = await fetchUserRole(existingSession.user.id);
+          console.log(`Initial role fetch complete: ${role}`);
         }
         
         setLoading(false);
@@ -396,7 +356,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         options: {
           data: {
             name,
-            role_request: role,
+            role_request: role, // Store requested role in metadata
           },
           emailRedirectTo: window.location.origin + '/auth-confirmation',
         },
@@ -412,53 +372,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (authData.user) {
-        // Create user role entry
-        try {
-          const { error: userRoleError } = await supabase
-            .from('user_roles')
-            .insert({ 
-              user_id: authData.user.id, 
-              role: role 
-            });
-
-          if (userRoleError) {
-            console.error("Error setting user role:", userRoleError);
+        // The trigger we created should handle role creation
+        console.log("User created with role_request in metadata:", role);
+        
+        // But let's verify it after a short delay to give the trigger time to execute
+        setTimeout(async () => {
+          const roleResult = await fetchUserRole(authData.user!.id);
+          if (!roleResult || roleResult !== role) {
+            console.warn(`Role verification failed, got ${roleResult} but expected ${role}`);
             
-            // Try a second time with a small delay
-            setTimeout(async () => {
-              const { error: retryError } = await supabase
-                .from('user_roles')
-                .insert({ 
-                  user_id: authData.user.id, 
-                  role: role 
-                });
-                
-              if (retryError) {
-                console.error("Second attempt to set role failed:", retryError);
-                toast({
-                  title: "Warning",
-                  description: "Account created but role could not be set. Default role will be used.",
-                  variant: "default",
-                });
-              } else {
-                console.log("Second attempt to set role succeeded");
-                setUserRole(role);
-              }
-            }, 500);
+            // Try direct insertion as backup
+            const { error: roleError } = await supabase
+              .from('user_roles')
+              .upsert({ 
+                user_id: authData.user!.id, 
+                role 
+              });
+              
+            if (roleError) {
+              console.error("Could not set user role directly:", roleError);
+            } else {
+              console.log("Successfully set role directly:", role);
+              setUserRole(role);
+            }
           } else {
-            setUserRole(role);
+            console.log("Role verification successful:", roleResult);
           }
-        } catch (roleError: any) {
-          console.error("Error setting user role:", roleError);
-        }
+        }, 1000);
 
         // Store role-specific questions if provided
         if (roleQuestions && Object.keys(roleQuestions).length > 0) {
           try {
             const { error: profileError } = await supabase
               .from('profiles')
-              .update({ question_responses: roleQuestions })
-              .eq('id', authData.user.id);
+              .upsert({ 
+                id: authData.user.id,
+                question_responses: roleQuestions 
+              });
 
             if (profileError) {
               console.error("Error updating profile:", profileError);
@@ -470,7 +420,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         toast({
           title: "Registration Successful",
-          description: `Welcome, ${name}! Please check your email to verify your account.`,
+          description: `Welcome, ${name}! Your account has been created with ${role} role.`,
         });
         
         // Set the user role immediately for a better user experience

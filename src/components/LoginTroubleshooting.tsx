@@ -16,6 +16,7 @@ import { repairUserEntries } from '@/utils/authUtils';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface LoginTroubleshootingProps {
   onRepair?: () => void;
@@ -24,10 +25,15 @@ interface LoginTroubleshootingProps {
 export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingProps) {
   const [repairing, setRepairing] = useState(false);
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const { toast } = useToast();
 
   const handleRepair = async () => {
     setRepairing(true);
+    setError(null);
+    setSuccess(null);
+    
     try {
       const { data } = await supabase.auth.getSession();
       
@@ -44,6 +50,7 @@ export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingP
         const repaired = await repairUserEntries(userId);
         
         if (repaired) {
+          setSuccess("Repair successful! We've fixed your account data. Please try logging in again.");
           toast({
             title: "Repair successful",
             description: "Your account has been repaired. Please try logging in again.",
@@ -61,6 +68,7 @@ export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingP
           }, 2000);
           
         } else {
+          setError("Repair failed. We couldn't fix your account automatically. Please try signing out and back in.");
           toast({
             title: "Repair failed",
             description: "Could not repair your account. Please try signing out and back in.",
@@ -68,6 +76,7 @@ export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingP
           });
         }
       } else {
+        setError("You're not logged in. You need to be logged in to repair your account.");
         toast({
           title: "Not logged in",
           description: "You need to be logged in to repair your account.",
@@ -76,6 +85,7 @@ export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingP
       }
     } catch (error) {
       console.error("Error during repair:", error);
+      setError("An unexpected error occurred during repair.");
       toast({
         title: "Error",
         description: "An unexpected error occurred during repair.",
@@ -83,7 +93,6 @@ export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingP
       });
     } finally {
       setRepairing(false);
-      setOpen(false);
     }
   };
 
@@ -94,21 +103,47 @@ export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingP
           Having trouble? Click here
         </Button>
       </AlertDialogTrigger>
-      <AlertDialogContent>
+      <AlertDialogContent className="max-w-md">
         <AlertDialogHeader>
           <AlertDialogTitle>Login Troubleshooting</AlertDialogTitle>
           <AlertDialogDescription>
-            If you're having trouble logging in, we can try to repair your account data. 
+            If you're having trouble logging in or seeing a white page after login, we can try to repair your account data. 
             This will reset your role permissions and fix any database inconsistencies.
-            <div className="mt-2 text-sm text-orange-600">
-              Note: If you logged in with a social provider (Google, GitHub, etc.), 
-              you may need to sign out and sign back in for role changes to take effect.
-            </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
+        
+        {error && (
+          <Alert variant="destructive" className="my-2">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        
+        {success && (
+          <Alert variant="default" className="my-2 bg-green-50 border-green-200">
+            <AlertDescription className="text-green-700">{success}</AlertDescription>
+          </Alert>
+        )}
+        
+        <div className="text-sm text-orange-700 bg-orange-50 p-3 rounded-md border border-orange-200 mt-2">
+          <p className="font-medium mb-1">Common issues this can fix:</p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>Missing user role after registration</li>
+            <li>Blank white screen after login</li>
+            <li>Not being directed to the correct dashboard</li>
+            <li>Social login users with incorrect roles</li>
+          </ul>
+        </div>
+        
+        <AlertDialogFooter className="mt-4">
           <AlertDialogCancel disabled={repairing}>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={handleRepair} disabled={repairing}>
+          <AlertDialogAction 
+            onClick={(e) => {
+              e.preventDefault();
+              handleRepair();
+            }} 
+            disabled={repairing}
+            className="bg-shop-purple hover:bg-shop-purple/90"
+          >
             {repairing ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Repairing...
