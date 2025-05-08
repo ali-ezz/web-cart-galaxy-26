@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
@@ -50,17 +51,17 @@ export default function DeliveryRoutesPage() {
       
       try {
         // Get active deliveries for this driver
-        const ordersResponse = await supabase
+        const { data: ordersData, error: ordersError } = await supabase
           .from('orders')
           .select('*')
           .eq('delivery_person_id', user.id)
           .eq('status', 'out_for_delivery')
           .order('created_at', { ascending: false });
           
-        if (ordersResponse.error) throw ordersResponse.error;
+        if (ordersError) throw ordersError;
         
         // Ensure we have an array of orders (even if empty)
-        const rawOrders = ordersResponse.data || [];
+        const rawOrders = ordersData || [];
         
         if (rawOrders.length === 0) return [];
         
@@ -68,7 +69,7 @@ export default function DeliveryRoutesPage() {
         const ordersWithDetails: Order[] = await Promise.all(
           rawOrders.map(async (order: RawOrder, index) => {
             // Get customer name from profiles table
-            const profileResponse = await supabase
+            const { data: profileData, error: profileError } = await supabase
               .from('profiles')
               .select('first_name, last_name')
               .eq('id', order.user_id)
@@ -76,8 +77,8 @@ export default function DeliveryRoutesPage() {
             
             let customerName = 'Unknown Customer';
             
-            if (!profileResponse.error && profileResponse.data) {
-              const profile = profileResponse.data;
+            if (!profileError && profileData) {
+              const profile = profileData as CustomerProfile;
               const firstName = profile.first_name || '';
               const lastName = profile.last_name || '';
               customerName = `${firstName} ${lastName}`.trim() || 'Unknown Customer';
