@@ -2,8 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -12,6 +12,7 @@ import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from '@/hooks/use-toast';
+import LoginTroubleshooting from '@/components/LoginTroubleshooting';
 
 // Create a schema for form validation
 const loginSchema = z.object({
@@ -30,6 +31,7 @@ export default function LoginPage() {
   const [verifyingSession, setVerifyingSession] = useState(true);
   const [error, setError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+  const [showTroubleshooting, setShowTroubleshooting] = useState(false);
   
   // Initialize form with Zod resolver
   const form = useForm<LoginFormValues>({
@@ -71,6 +73,7 @@ export default function LoginPage() {
                 }
                 await supabase.auth.signOut();
                 setError("Database connection error. Please try again.");
+                setShowTroubleshooting(true);
               } else if (!userData) {
                 console.log("Creating default role for user");
                 // User doesn't have a role yet, create one
@@ -87,6 +90,7 @@ export default function LoginPage() {
                   }
                   await supabase.auth.signOut();
                   setError("Could not set up your account. Please try again.");
+                  setShowTroubleshooting(true);
                 }
               }
             } catch (err) {
@@ -95,6 +99,7 @@ export default function LoginPage() {
                 setTimeout(() => verifyUserInDb(retries - 1, delay * 1.5), delay);
               } else {
                 setError("Connection issue. Please try again.");
+                setShowTroubleshooting(true);
               }
             }
           };
@@ -104,6 +109,7 @@ export default function LoginPage() {
       } catch (err) {
         console.error("Error verifying session:", err);
         setError("Session verification failed. Please try again.");
+        setShowTroubleshooting(true);
       } finally {
         setVerifyingSession(false);
       }
@@ -155,12 +161,14 @@ export default function LoginPage() {
         } else {
           setVerifyingSession(false);
           setError("Session refresh failed. Please try logging in again.");
+          setShowTroubleshooting(true);
         }
       }, 500);
     } catch (err) {
       console.error("Error during retry:", err);
       setVerifyingSession(false);
       setError("Retry failed. Please try logging in again.");
+      setShowTroubleshooting(true);
     }
   };
   
@@ -182,10 +190,12 @@ export default function LoginPage() {
         });
       } else {
         setError('Invalid email or password');
+        setShowTroubleshooting(true);
       }
     } catch (err: any) {
       console.error('Login error:', err);
       setError('An error occurred during login. Please try again.');
+      setShowTroubleshooting(true);
     } finally {
       setLoading(false);
     }
@@ -295,6 +305,12 @@ export default function LoginPage() {
               </Link>
             </p>
           </div>
+
+          {(showTroubleshooting || error) && (
+            <div className="mt-6">
+              <LoginTroubleshooting />
+            </div>
+          )}
         </div>
 
         {/* Demo accounts section */}

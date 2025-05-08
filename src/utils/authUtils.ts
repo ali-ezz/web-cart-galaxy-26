@@ -49,28 +49,25 @@ export const verifyUserConsistency = async (userId: string): Promise<boolean> =>
         console.error("Error getting user metadata:", metadataError);
       }
       
-      // Use the database repair function which will use the trigger we created
-      console.log("Calling repair_user_entries function to create user role...");
-      const { data: repairData, error: repairError } = await supabase
-        .rpc('repair_user_entries', { user_id: userId });
+      // Do a direct insert first as it's faster
+      const { error: insertRoleError } = await supabase
+        .from('user_roles')
+        .upsert({ 
+          user_id: userId, 
+          role: roleToAssign 
+        });
         
-      if (repairError) {
-        console.error("Repair function failed:", repairError);
+      if (insertRoleError) {
+        console.error("Error creating role directly:", insertRoleError);
         
-        // Try direct insertion as fallback
-        const { error: insertRoleError } = await supabase
-          .from('user_roles')
-          .upsert({ 
-            user_id: userId, 
-            role: roleToAssign 
-          });
+        // Try using repair function as fallback
+        const { data: repairData, error: repairError } = await supabase
+          .rpc('repair_user_entries', { user_id: userId });
           
-        if (insertRoleError) {
-          console.error("Error creating role directly:", insertRoleError);
+        if (repairError) {
+          console.error("Repair function failed:", repairError);
           return false;
         }
-      } else {
-        console.log("Repair function succeeded:", repairData);
       }
     }
     
@@ -136,49 +133,50 @@ export const repairUserEntries = async (userId: string): Promise<boolean> => {
       console.log(`Found role in metadata: ${roleFromMetadata}`);
     }
     
-    // Call the improved database function to repair user entries
+    // Try the RPC function first
     const { data, error } = await supabase
       .rpc('repair_user_entries', { user_id: userId });
       
     if (error) {
       console.error("Error calling repair function:", error);
       
-      // Try manual repair as fallback
-      try {
-        // First delete potentially corrupted entries
-        await supabase.from('user_roles').delete().eq('user_id', userId);
+      // If function call fails, try manual repair
+      
+      // First delete potentially corrupted entries
+      await supabase.from('user_roles').delete().eq('user_id', userId);
+      
+      // Create a fresh role entry based on metadata or default to customer
+      const roleToUse = roleFromMetadata && ['admin', 'seller', 'customer', 'delivery'].includes(roleFromMetadata)
+        ? roleFromMetadata as Database["public"]["Enums"]["user_role"]
+        : 'customer';
         
-        // Create a fresh role entry
-        const { error: insertRoleError } = await supabase
-          .from('user_roles')
-          .upsert({ 
-            user_id: userId, 
-            role: roleFromMetadata && ['admin', 'seller', 'customer', 'delivery'].includes(roleFromMetadata)
-              ? roleFromMetadata as Database["public"]["Enums"]["user_role"]
-              : 'customer'
-          });
-          
-        if (insertRoleError) {
-          console.error("Manual role repair failed:", insertRoleError);
-          return false;
-        }
+      console.log(`Using role for repair: ${roleToUse}`);
+      
+      // Insert the role
+      const { error: insertRoleError } = await supabase
+        .from('user_roles')
+        .upsert({ 
+          user_id: userId, 
+          role: roleToUse
+        });
         
-        // Make sure profile exists
-        const { error: insertProfileError } = await supabase
-          .from('profiles')
-          .upsert({ id: userId });
-          
-        if (insertProfileError) {
-          console.error("Manual profile repair failed:", insertProfileError);
-          return false;
-        }
-        
-        console.log("Manual repair completed successfully");
-        return true;
-      } catch (manualError) {
-        console.error("Manual repair attempt failed:", manualError);
+      if (insertRoleError) {
+        console.error("Manual role repair failed:", insertRoleError);
         return false;
       }
+      
+      // Make sure profile exists
+      const { error: insertProfileError } = await supabase
+        .from('profiles')
+        .upsert({ id: userId });
+        
+      if (insertProfileError) {
+        console.error("Manual profile repair failed:", insertProfileError);
+        return false;
+      }
+      
+      console.log("Manual repair completed successfully");
+      return true;
     }
     
     console.log("Repair function succeeded");
@@ -210,6 +208,18 @@ export const checkUserExists = async (userId: string): Promise<boolean> => {
     if (error && error.code !== 'PGRST116') {
       console.error("Error checking if user exists:", error);
       return false;
+    }
+    
+    // Also check auth.users as a backup (requires elevated permissions)
+    if (!data) {
+      try {
+        // Try to get user from auth.users via getUser API call
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        return !!userData.user && userData.user.id === userId;
+      } catch (authError) {
+        console.error("Error checking auth user:", authError);
+        return false;
+      }
     }
     
     return !!data;

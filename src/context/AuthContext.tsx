@@ -170,6 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (event, currentSession) => {
         console.log(`Auth state change: ${event}`, currentSession?.user?.id || 'No user');
         
+        // Always update the session state
         setSession(currentSession);
         
         if (currentSession?.user) {
@@ -309,10 +310,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         if (!isConsistent) {
           console.warn("User data inconsistency detected during login");
-          toast({
-            title: "Account Issue",
-            description: "We detected an issue with your account data which has been auto-repaired.",
-          });
+          
+          // Auto-repair if inconsistency detected
+          const repairResult = await repairUserEntries(data.user.id);
+          
+          if (repairResult) {
+            console.log("Auto-repair successful");
+            toast({
+              title: "Account Issue Fixed",
+              description: "We detected and fixed an issue with your account data.",
+            });
+          } else {
+            console.error("Auto-repair failed");
+            toast({
+              title: "Account Issue",
+              description: "We detected an issue with your account data. Please use the repair option below.",
+              variant: "destructive",
+            });
+          }
         }
         
         // Fetch or create role

@@ -79,9 +79,10 @@ const Index = () => {
             navigate('/home');
             break;
           default:
-            // For unknown roles, stay on this page but show error
+            // For unknown roles, try navigating to a default dashboard
+            console.warn(`Unknown role detected: ${role}, redirecting to welcome page`);
+            navigate('/welcome');
             setIsRedirecting(false);
-            setError("Unknown role detected. Please contact support.");
             break;
         }
       } catch (err) {
@@ -111,14 +112,19 @@ const Index = () => {
         
         if (!isConsistent) {
           console.warn("User data is inconsistent, attempting to repair");
-          setError("Account data issue detected. Please use the repair option below.");
-          
           toast({
             title: "Account issue detected",
-            description: "Some account data is missing. Use the repair option below.",
-            variant: "destructive",
+            description: "Some account data is missing. We're attempting to fix this automatically.",
           });
-        } else if (userRole) {
+          
+          // Try auto-repair
+          const isRepaired = await verifyUserConsistency(user.id);
+          if (!isRepaired) {
+            setError("Account data issue detected. Please use the repair option below.");
+          }
+        } 
+        
+        if (userRole) {
           console.log("User data is consistent with role:", userRole);
           
           // Add a small delay to ensure the toast appears after the page loads
@@ -142,7 +148,7 @@ const Index = () => {
         setMaxRetries(prev => prev + 1);
         setError("There was a problem checking your account data.");
         
-        if (maxRetries >= 3) {
+        if (maxRetries >= 2) {
           toast({
             title: "Persistent verification error",
             description: "We're having trouble verifying your account. Please try logging out and back in.",
