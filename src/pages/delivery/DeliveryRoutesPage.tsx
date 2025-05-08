@@ -44,7 +44,7 @@ export default function DeliveryRoutesPage() {
         if (!orders || orders.length === 0) return [];
         
         // Add customer name for each order
-        // Fix: Add explicit type annotation for the map function to avoid excessive type instantiation
+        // Fix: Use explicit type annotation and avoid complex type inference
         const ordersWithDetails: Order[] = await Promise.all(orders.map(async (order, index) => {
           // Get customer name from profiles table
           const { data: customerProfile } = await supabase
