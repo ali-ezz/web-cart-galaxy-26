@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { UserRoleDebug } from '@/components/UserRoleDebug';
 import { Card, CardContent } from '@/components/ui/card';
+import { Loader2 } from 'lucide-react';
 
 const Home = () => {
-  const { isAuthenticated, userRole, loading } = useAuth();
+  const { isAuthenticated, userRole, loading, user } = useAuth();
 
   // Sample product categories with images
   const categories = [
@@ -32,6 +33,37 @@ const Home = () => {
       gradient: "from-purple-50 to-purple-100"
     },
   ];
+
+  // If still loading authentication state, show a loading spinner
+  if (loading) {
+    return (
+      <div className="container mx-auto flex justify-center items-center min-h-[60vh]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 mx-auto animate-spin text-shop-purple" />
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If authenticated and not a customer, redirect logic is handled by Index.tsx
+  // This is just a fallback in case they manually navigate here
+  if (isAuthenticated && userRole && userRole !== 'customer') {
+    return (
+      <div className="container mx-auto px-4 py-8 text-center">
+        <h2 className="text-2xl font-semibold mb-4">Redirecting...</h2>
+        <p className="mb-4">Since you're logged in as a {userRole}, you'll be redirected to your dashboard.</p>
+        <div className="flex justify-center gap-4 mt-6">
+          <Button asChild variant="outline">
+            <Link to={`/${userRole}`}>Go to {userRole} dashboard</Link>
+          </Button>
+          <Button asChild>
+            <Link to="/welcome">Go to welcome page</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -60,28 +92,19 @@ const Home = () => {
           </div>
         )}
         
-        {isAuthenticated && !loading && (
+        {isAuthenticated && !loading && userRole === 'customer' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="md:col-span-2">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <h2 className="text-xl font-semibold text-gray-900">
-                  Welcome back, {userRole === 'admin' ? 'Admin' : 
-                              userRole === 'seller' ? 'Seller' : 
-                              userRole === 'delivery' ? 'Delivery Partner' : 
-                              'Customer'}!
+                  Welcome back, {user?.name || 'Customer'}!
                 </h2>
                 <p className="mt-2 text-gray-700">
-                  {userRole === 'admin' && 'Manage your store and users from your admin dashboard.'}
-                  {userRole === 'seller' && 'Manage your products and orders from your seller dashboard.'}
-                  {userRole === 'delivery' && 'View and manage your delivery assignments.'}
-                  {(userRole === 'customer' || !userRole) && 'Browse products and make purchases.'}
+                  Browse our latest products and make purchases. Explore the categories below!
                 </p>
                 <div className="mt-4">
                   <Button asChild>
-                    {userRole === 'admin' && <Link to="/admin">Go to Admin Dashboard</Link>}
-                    {userRole === 'seller' && <Link to="/seller">Go to Seller Dashboard</Link>}
-                    {userRole === 'delivery' && <Link to="/delivery">Go to Delivery Dashboard</Link>}
-                    {(userRole === 'customer' || !userRole) && <Link to="/account">Go to My Account</Link>}
+                    <Link to="/account">Go to My Account</Link>
                   </Button>
                 </div>
               </div>
@@ -90,13 +113,6 @@ const Home = () => {
             <div className="flex flex-col">
               <UserRoleDebug />
             </div>
-          </div>
-        )}
-        
-        {loading && (
-          <div className="text-center p-8">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-shop-purple border-t-transparent"></div>
-            <p className="mt-4 text-gray-600">Loading...</p>
           </div>
         )}
 
