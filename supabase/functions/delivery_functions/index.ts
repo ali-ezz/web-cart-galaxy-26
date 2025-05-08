@@ -68,8 +68,12 @@ serve(async (req) => {
       );
     }
 
-    // Require delivery role for most operations
-    const { action } = await req.json();
+    // Clone the request to avoid body already consumed error
+    const requestClone = req.clone();
+    // Parse the request body data
+    const requestData = await requestClone.json();
+    const { action, ...params } = requestData;
+    
     if (action !== 'get_available_orders' && (!roleData || roleData.role !== 'delivery')) {
       return new Response(
         JSON.stringify({ error: "Access denied. Delivery role required." }),
@@ -81,8 +85,6 @@ serve(async (req) => {
     }
 
     // Handle the request
-    const { data, ...params } = await req.json();
-    
     let result;
     
     switch (action) {
@@ -247,9 +249,9 @@ serve(async (req) => {
         console.log("Getting delivery stats for id:", statsPersonId);
         
         // Get completed deliveries count
-        const { data: deliveredCount, error: deliveredError } = await supabaseClient
+        const { count: deliveredCount, error: deliveredError } = await supabaseClient
           .from('delivery_assignments')
-          .select('id', { count: 'exact' })
+          .select('id', { count: 'exact', head: true })
           .eq('delivery_person_id', statsPersonId)
           .eq('status', 'delivered');
           
@@ -259,9 +261,9 @@ serve(async (req) => {
         }
         
         // Get in progress deliveries count
-        const { data: assignedCount, error: assignedError } = await supabaseClient
+        const { count: assignedCount, error: assignedError } = await supabaseClient
           .from('delivery_assignments')
-          .select('id', { count: 'exact' })
+          .select('id', { count: 'exact', head: true })
           .eq('delivery_person_id', statsPersonId)
           .eq('status', 'assigned');
           

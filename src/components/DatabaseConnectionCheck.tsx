@@ -64,7 +64,7 @@ export function DatabaseConnectionCheck() {
           .from('profiles')
           .select('id')
           .eq('id', authData.session.user.id)
-          .single();
+          .maybeSingle();
           
         if (rlsError && rlsError.code !== 'PGRST116') { // PGRST116 means no rows returned
           console.error("RLS check failed:", rlsError);
