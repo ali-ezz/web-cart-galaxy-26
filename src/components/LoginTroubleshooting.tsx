@@ -53,6 +53,11 @@ export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingP
           setTimeout(async () => {
             await supabase.auth.signOut();
             if (onRepair) onRepair();
+            
+            // Reload the page after a short delay
+            setTimeout(() => {
+              window.location.href = '/login';
+            }, 1000);
           }, 2000);
           
         } else {

@@ -68,7 +68,20 @@ export const verifyUserConsistency = async (userId: string): Promise<boolean> =>
           console.error("Repair function failed:", repairError);
           return false;
         }
+        
         console.log("Repair function succeeded:", repairData);
+        
+        // If we need to set a non-customer role from metadata, do it after repair
+        if (roleToAssign !== 'customer') {
+          const { error: updateRoleError } = await supabase
+            .from('user_roles')
+            .update({ role: roleToAssign })
+            .eq('user_id', userId);
+            
+          if (updateRoleError) {
+            console.error("Error updating role after repair:", updateRoleError);
+          }
+        }
       } else {
         console.log(`Role '${roleToAssign}' successfully assigned to user ${userId}`);
       }
@@ -154,7 +167,45 @@ export const repairUserEntries = async (userId: string): Promise<boolean> => {
       
     if (error) {
       console.error("Error calling repair function:", error);
-      return false;
+      
+      // Try manual repair as fallback
+      try {
+        // First delete potentially corrupted entries
+        await supabase.from('user_roles').delete().eq('user_id', userId);
+        
+        // Create a fresh role entry
+        const { error: insertRoleError } = await supabase
+          .from('user_roles')
+          .insert({ 
+            user_id: userId, 
+            role: roleFromMetadata && ['admin', 'seller', 'customer', 'delivery'].includes(roleFromMetadata)
+              ? roleFromMetadata as Database["public"]["Enums"]["user_role"]
+              : 'customer'
+          });
+          
+        if (insertRoleError) {
+          console.error("Manual role repair failed:", insertRoleError);
+          return false;
+        }
+        
+        // Make sure profile exists
+        const { error: insertProfileError } = await supabase
+          .from('profiles')
+          .insert({ id: userId })
+          .onConflict('id')
+          .merge();
+          
+        if (insertProfileError) {
+          console.error("Manual profile repair failed:", insertProfileError);
+          return false;
+        }
+        
+        console.log("Manual repair completed successfully");
+        return true;
+      } catch (manualError) {
+        console.error("Manual repair attempt failed:", manualError);
+        return false;
+      }
     }
     
     // If we have a role from metadata and repair succeeded, try to update the role

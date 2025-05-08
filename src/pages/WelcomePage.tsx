@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Database } from "@/integrations/supabase/types";
 import { verifyUserConsistency } from "@/utils/authUtils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import LoginTroubleshooting from "@/components/LoginTroubleshooting";
 
 // Define the UserRole type to ensure consistency
 type UserRole = Database["public"]["Enums"]["user_role"];
@@ -21,10 +22,19 @@ export default function WelcomePage() {
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [verifyingUser, setVerifyingUser] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
+  
+  // Log component state for debugging
+  useEffect(() => {
+    console.log("Welcome page state:", { isAuthenticated, userRole, loading, user, verifyingUser });
+  }, [isAuthenticated, userRole, loading, user, verifyingUser]);
   
   // Function to verify the user exists in the database with improved error handling
   const verifyUserExists = async () => {
-    if (!user?.id) return false;
+    if (!user?.id) {
+      console.error("No user ID available to verify");
+      return false;
+    }
     
     setVerifyingUser(true);
     setError(null);
@@ -60,7 +70,7 @@ export default function WelcomePage() {
     if (isAuthenticated && user?.id && !loading) {
       verifyUserExists();
     }
-  }, [isAuthenticated, user, loading]);
+  }, [isAuthenticated, user, loading, fetchUserRole]);
   
   // Function to handle role-based navigation with improved error handling
   const navigateToRoleDashboard = async () => {
@@ -72,6 +82,11 @@ export default function WelcomePage() {
       const userExists = await verifyUserExists();
       if (!userExists) {
         console.warn("User validation failed, redirecting to login");
+        toast({
+          title: "Account Problem",
+          description: "There was a problem with your account. Please log in again.",
+          variant: "destructive",
+        });
         await supabase.auth.signOut();
         navigate("/login");
         return;
@@ -172,6 +187,37 @@ export default function WelcomePage() {
                     </p>
                   </div>
                 </div>
+              </div>
+              
+              {/* Debug information toggle */}
+              <div className="mt-4 text-center">
+                <button 
+                  className="text-xs text-gray-400 underline"
+                  onClick={() => setShowDebug(!showDebug)}
+                >
+                  {showDebug ? 'Hide debug info' : 'Show debug info'}
+                </button>
+              </div>
+              
+              {showDebug && (
+                <div className="mt-4 p-4 bg-gray-50 rounded border max-w-lg overflow-auto text-xs">
+                  <h4 className="font-bold mb-2">Debug Info:</h4>
+                  <pre>
+                    {JSON.stringify({ 
+                      authenticated: isAuthenticated, 
+                      role: userRole, 
+                      loading, 
+                      verifyingUser,
+                      hasUser: !!user,
+                      userId: user?.id
+                    }, null, 2)}
+                  </pre>
+                </div>
+              )}
+              
+              {/* Troubleshooting option */}
+              <div className="mt-4 flex justify-center">
+                <LoginTroubleshooting onRepair={() => verifyUserExists()} />
               </div>
             </>
           )}
