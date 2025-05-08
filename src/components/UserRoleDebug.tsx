@@ -4,12 +4,16 @@ import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
+import { Loader2, RefreshCw, AlertCircle, ShieldAlert, Key } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { verifyUserConsistency } from '@/utils/authUtils';
 
 export function UserRoleDebug() {
   const { userRole, isAuthenticated, loading, roleLoading, user, debugAuthState, fetchUserRole } = useAuth();
+  const { toast } = useToast();
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [repairing, setRepairing] = React.useState(false);
   
   const handleRefreshRole = async () => {
     if (!user?.id) return;
@@ -17,6 +21,45 @@ export function UserRoleDebug() {
     setRefreshing(true);
     await fetchUserRole(user.id);
     setRefreshing(false);
+    
+    toast({
+      title: "Role refreshed",
+      description: userRole ? `Your current role is: ${userRole}` : "No role could be detected",
+    });
+  };
+  
+  const handleRepairAccount = async () => {
+    if (!user?.id) return;
+    
+    setRepairing(true);
+    try {
+      const isRepaired = await verifyUserConsistency(user.id);
+      
+      if (isRepaired) {
+        toast({
+          title: "Account verified",
+          description: "Your account data has been checked and repaired if needed",
+        });
+        
+        // Refresh role after repair
+        await fetchUserRole(user.id);
+      } else {
+        toast({
+          title: "Verification failed",
+          description: "Could not verify account data. Try logging out and back in.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error repairing account:", error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred during account verification",
+        variant: "destructive",
+      });
+    } finally {
+      setRepairing(false);
+    }
   };
 
   // Format debug info
@@ -79,25 +122,47 @@ export function UserRoleDebug() {
           )}
           
           {isAuthenticated && (
-            <Button 
-              size="sm" 
-              variant="outline" 
-              className="w-full mt-2"
-              onClick={handleRefreshRole}
-              disabled={refreshing || loading}
-            >
-              {refreshing ? (
-                <>
-                  <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                  Refreshing...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-3 w-3" />
-                  Refresh Role
-                </>
-              )}
-            </Button>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="w-full"
+                onClick={handleRefreshRole}
+                disabled={refreshing || loading || repairing}
+              >
+                {refreshing ? (
+                  <>
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                    Refreshing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-3 w-3" />
+                    Refresh Role
+                  </>
+                )}
+              </Button>
+              
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="w-full"
+                onClick={handleRepairAccount}
+                disabled={repairing || loading || refreshing}
+              >
+                {repairing ? (
+                  <>
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  <>
+                    <Key className="mr-2 h-3 w-3" />
+                    Verify Account
+                  </>
+                )}
+              </Button>
+            </div>
           )}
           
           {isExpanded && (
@@ -112,7 +177,16 @@ export function UserRoleDebug() {
               <div className="pt-2 text-xs text-gray-500 flex items-start gap-2">
                 <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
                 <p>
-                  If your role is not showing correctly, try refreshing your role or logging out and back in.
+                  If your role is not showing correctly, try refreshing your role or verifying your account. 
+                  If problems persist, log out and back in.
+                </p>
+              </div>
+              
+              <div className="pt-2 text-xs text-gray-500 flex items-start gap-2">
+                <ShieldAlert className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                <p>
+                  SSO users (Google, GitHub, etc): Your role might be reset on first login. 
+                  Use the "Verify Account" button to ensure proper role assignment.
                 </p>
               </div>
             </div>

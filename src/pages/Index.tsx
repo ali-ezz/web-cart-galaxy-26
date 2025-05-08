@@ -21,31 +21,42 @@ const Index = () => {
       setVerifying(true);
       console.log("Verifying user consistency on Index page...");
       
-      const isConsistent = await verifyUserConsistency(user.id);
-      
-      if (!isConsistent) {
+      try {
+        const isConsistent = await verifyUserConsistency(user.id);
+        
+        if (!isConsistent) {
+          console.warn("User data is inconsistent, attempting to repair");
+          toast({
+            title: "Account issue detected",
+            description: "Some account data is missing. Attempting to repair...",
+            variant: "destructive",
+          });
+        } else {
+          console.log("User data is consistent");
+          // Add a small delay to ensure the toast appears after the page loads
+          const timer = setTimeout(() => {
+            toast({
+              title: "Authentication Status",
+              description: `You are logged in as ${user?.name} with role: ${userRole || 'loading...'}`,
+            });
+          }, 300);
+          
+          return () => clearTimeout(timer);
+        }
+      } catch (error) {
+        console.error("Error verifying user:", error);
         toast({
-          title: "Account issue detected",
-          description: "Some account data is missing. Attempting to repair...",
+          title: "Verification error",
+          description: "There was a problem checking your account data.",
           variant: "destructive",
         });
-      } else {
-        // Add a small delay to ensure the toast appears after the page loads
-        const timer = setTimeout(() => {
-          toast({
-            title: "Authentication Status",
-            description: `You are logged in as ${user?.name} with role: ${userRole || 'loading...'}`,
-          });
-        }, 300);
-        
-        return () => clearTimeout(timer);
+      } finally {
+        setVerifying(false);
       }
-      
-      setVerifying(false);
     };
     
     verifyUser();
-  }, [isAuthenticated, user, loading, toast]);
+  }, [isAuthenticated, user, loading, toast, userRole]);
 
   // Handle redirection for non-customer users
   useEffect(() => {
@@ -72,6 +83,7 @@ const Index = () => {
   
   // Redirect non-customer users to welcome page
   if (isRedirecting || (isAuthenticated && userRole && userRole !== 'customer')) {
+    console.log(`Redirecting from Index to Welcome page, role: ${userRole}`);
     return <Navigate to="/welcome" replace />;
   }
 

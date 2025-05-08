@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -97,23 +98,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }
           
-          // Create a default role for the user
+          // Create a default role for the user using RPC to avoid RLS issues
           try {
-            const { error: insertError } = await supabase
-              .from('user_roles')
-              .insert({ 
-                user_id: userId, 
-                role: roleToAssign 
-              });
+            console.log(`Creating default role '${roleToAssign}' for user ${userId}`);
+            const { error: repairError } = await supabase
+              .rpc('repair_user_entries', { user_id: userId });
+              
+            if (repairError) {
+              console.error("Error repairing user:", repairError);
+              
+              // Fallback: direct insert
+              const { error: insertError } = await supabase
+                .from('user_roles')
+                .insert({ 
+                  user_id: userId, 
+                  role: roleToAssign 
+                });
+              
+              if (insertError) {
+                console.error("Error creating default role:", insertError);
+                toast({
+                  title: "Error setting user role",
+                  description: "Could not set default user role. Please try logging in again.",
+                  variant: "destructive",
+                });
+                return 'customer'; // Still return customer as default
+              }
+            }
             
-            if (insertError) {
-              console.error("Error creating default role:", insertError);
-              toast({
-                title: "Error setting user role",
-                description: "Could not set default user role. Please contact support.",
-                variant: "destructive",
-              });
-              return 'customer'; // Still return customer as default
+            // If role is not customer, update it after repair
+            if (roleToAssign !== 'customer') {
+              // Wait a bit for repair to complete
+              await new Promise(resolve => setTimeout(resolve, 500));
+              
+              const { error: updateError } = await supabase
+                .from('user_roles')
+                .update({ role: roleToAssign })
+                .eq('user_id', userId);
+                
+              if (updateError) {
+                console.error("Error updating role after repair:", updateError);
+              }
             }
             
             setUserRole(roleToAssign);
@@ -136,27 +161,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUserRole(data.role);
         return data.role;
       } else {
-        console.log(`No role data for user ${userId}, defaulting to customer`);
+        console.log(`No role data for user ${userId}, verifying consistency`);
         
-        // Create a default customer role for the user
-        try {
-          const { error: insertError } = await supabase
-            .from('user_roles')
-            .insert({ 
-              user_id: userId, 
-              role: 'customer' as UserRole 
-            });
+        // Run a verification to ensure both profile and role are created
+        const isConsistent = await verifyUserConsistency(userId);
+        
+        if (!isConsistent) {
+          console.warn("User data consistency issues detected");
           
-          if (insertError) {
-            console.error("Error creating default role:", insertError);
-          } else {
+          // Try again after verification
+          const { data: retryData, error: retryError } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', userId)
+            .maybeSingle();
+            
+          if (retryError || !retryData) {
             toast({
               title: "Default Role Assigned",
               description: "You've been assigned a customer role by default."
             });
+            setUserRole('customer');
+            return 'customer';
           }
-        } catch (insertError) {
-          console.error("Exception creating default role:", insertError);
+          
+          setUserRole(retryData.role);
+          return retryData.role;
         }
         
         setUserRole('customer');
@@ -199,7 +229,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           
           // Handle SSO signup events
           if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-            // Verify user consistency on auth state change
+            // Verify user consistency on auth state change, but don't block UI
             setTimeout(async () => {
               // Verify and repair user data if needed
               const isConsistent = await verifyUserConsistency(currentSession.user.id);
@@ -243,19 +273,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const isConsistent = await verifyUserConsistency(existingSession.user.id);
           
           if (!isConsistent) {
-            console.warn("User data is inconsistent, signing out");
+            console.warn("User data is inconsistent, will auto-repair in background");
             toast({
-              title: "Account issue detected",
-              description: "We detected an issue with your account. Please log in again.",
-              variant: "destructive",
+              title: "Account verification",
+              description: "We're checking your account data...",
             });
-            await supabase.auth.signOut();
-            setSession(null);
-            setUser(null);
-            setIsAuthenticated(false);
-            setUserRole(null);
-            setLoading(false);
-            return;
+            
+            // Continue with session, verification will happen in background
           }
           
           // Extract name from metadata with fallbacks for SSO providers

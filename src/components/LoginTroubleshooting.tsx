@@ -33,6 +33,14 @@ export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingP
       
       if (data.session?.user) {
         const userId = data.session.user.id;
+        console.log(`Attempting account repair for user ID: ${userId}`);
+        
+        // Try to get metadata before signing out
+        const roleFromMetadata = data.session.user.user_metadata?.role_request;
+        if (roleFromMetadata) {
+          console.log(`Found role in metadata: ${roleFromMetadata}`);
+        }
+        
         const repaired = await repairUserEntries(userId);
         
         if (repaired) {
@@ -50,7 +58,7 @@ export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingP
         } else {
           toast({
             title: "Repair failed",
-            description: "Could not repair your account. Please contact support.",
+            description: "Could not repair your account. Please try signing out and back in.",
             variant: "destructive",
           });
         }
@@ -65,7 +73,7 @@ export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingP
       console.error("Error during repair:", error);
       toast({
         title: "Error",
-        description: "An unexpected error occurred.",
+        description: "An unexpected error occurred during repair.",
         variant: "destructive",
       });
     } finally {
@@ -86,7 +94,11 @@ export default function LoginTroubleshooting({ onRepair }: LoginTroubleshootingP
           <AlertDialogTitle>Login Troubleshooting</AlertDialogTitle>
           <AlertDialogDescription>
             If you're having trouble logging in, we can try to repair your account data. 
-            This will reset your role to 'customer' and fix any database inconsistencies.
+            This will reset your role permissions and fix any database inconsistencies.
+            <div className="mt-2 text-sm text-orange-600">
+              Note: If you logged in with a social provider (Google, GitHub, etc.), 
+              you may need to sign out and sign back in for role changes to take effect.
+            </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

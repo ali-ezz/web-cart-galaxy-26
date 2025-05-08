@@ -4,130 +4,68 @@ import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, ShoppingBag, Package, Truck, LayoutDashboard } from "lucide-react";
+import { Loader2, ShoppingBag, Package, Truck, LayoutDashboard, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Database } from "@/integrations/supabase/types";
+import { verifyUserConsistency } from "@/utils/authUtils";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // Define the UserRole type to ensure consistency
 type UserRole = Database["public"]["Enums"]["user_role"];
 
 export default function WelcomePage() {
-  const { isAuthenticated, userRole, loading, user } = useAuth();
+  const { isAuthenticated, userRole, loading, user, fetchUserRole } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [verifyingUser, setVerifyingUser] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // Function to verify the user exists in the database with improved error handling
   const verifyUserExists = async () => {
     if (!user?.id) return false;
     
     setVerifyingUser(true);
+    setError(null);
+    
     try {
-      console.log(`Verifying user ID: ${user.id}`);
+      console.log(`Verifying user ID: ${user.id} on Welcome page`);
       
-      // Check if user has a role assigned
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      const isConsistent = await verifyUserConsistency(user.id);
       
-      if (error) {
-        console.error("Error verifying user:", error);
-        toast({
-          title: "Error verifying account",
-          description: "There was a problem connecting to the database. Please try again.",
-          variant: "destructive",
-        });
+      if (!isConsistent) {
+        console.warn("User verification failed on welcome page");
+        setError("Your account data couldn't be verified. Please try logging out and back in.");
         return false;
       }
       
-      if (!data) {
-        console.log("No role found, creating default role for user");
-        
-        // Get role from user metadata if available (for SSO users)
-        let roleToAssign: UserRole = 'customer';
-        
-        // Try to extract role from metadata for SSO users
-        const { data: sessionData } = await supabase.auth.getSession();
-        const userMetadata = sessionData?.session?.user?.user_metadata;
-        
-        if (userMetadata && userMetadata.role_request) {
-          const requestedRole = userMetadata.role_request as string;
-          if (requestedRole === 'admin' || 
-              requestedRole === 'customer' || 
-              requestedRole === 'seller' || 
-              requestedRole === 'delivery') {
-            roleToAssign = requestedRole as UserRole;
-            console.log(`Using role from metadata: ${roleToAssign}`);
-          }
-        }
-        
-        // Create default role
-        const { error: insertError } = await supabase
-          .from('user_roles')
-          .insert({ 
-            user_id: user.id, 
-            role: roleToAssign 
-          });
-          
-        if (insertError) {
-          console.error("Error creating default role:", insertError);
-          toast({
-            title: "Account setup issue",
-            description: "Could not set up your user profile. Please try logging out and back in.",
-            variant: "destructive",
-          });
-          return false;
-        }
-        
-        toast({
-          title: "Account set up",
-          description: `Your account has been set up as a ${roleToAssign}`,
-        });
-      }
-      
-      // Also make sure the profile exists
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('id', user.id)
-        .maybeSingle();
-        
-      if (profileError && profileError.code !== 'PGRST116') {
-        console.error("Error checking profile:", profileError);
-      }
-      
-      // Create profile if not exists
-      if (profileError && profileError.code === 'PGRST116') {
-        const { error: insertProfileError } = await supabase
-          .from('profiles')
-          .insert({ id: user.id });
-          
-        if (insertProfileError) {
-          console.error("Error creating profile:", insertProfileError);
-        }
+      // Refresh role after verification
+      if (user.id) {
+        await fetchUserRole(user.id);
       }
       
       return true;
     } catch (err) {
       console.error("Exception verifying user:", err);
-      toast({
-        title: "Unexpected error",
-        description: "An unexpected error occurred. Please try again.",
-        variant: "destructive",
-      });
+      setError("An unexpected error occurred. Please try again.");
       return false;
     } finally {
       setVerifyingUser(false);
     }
   };
   
+  // Verify user data on initial load
+  useEffect(() => {
+    if (isAuthenticated && user?.id && !loading) {
+      verifyUserExists();
+    }
+  }, [isAuthenticated, user, loading]);
+  
   // Function to handle role-based navigation with improved error handling
   const navigateToRoleDashboard = async () => {
     setIsRedirecting(true);
+    setError(null);
     
     try {
       // Verify user exists in database
@@ -170,11 +108,7 @@ export default function WelcomePage() {
       }, 500); // Short delay to ensure userRole is properly loaded
     } catch (error) {
       console.error("Navigation error:", error);
-      toast({
-        title: "Navigation error",
-        description: "Could not navigate to your dashboard. Please try again.",
-        variant: "destructive", 
-      });
+      setError("Could not navigate to your dashboard. Please try again.");
       setIsRedirecting(false);
     }
   };
@@ -205,6 +139,13 @@ export default function WelcomePage() {
             </div>
           ) : (
             <>
+              {error && (
+                <Alert variant="destructive" className="mb-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+            
               <div className="text-center">
                 <h3 className="text-lg font-medium mb-1">
                   Hello, {user?.name || "User"}!
