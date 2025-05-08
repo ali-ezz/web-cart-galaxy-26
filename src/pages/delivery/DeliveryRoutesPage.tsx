@@ -51,25 +51,26 @@ export default function DeliveryRoutesPage() {
       
       try {
         // Get active deliveries for this driver
-        const orderResponse = await supabase
+        const { data, error } = await supabase
           .from('orders')
           .select('*')
           .eq('delivery_person_id', user.id)
           .eq('status', 'out_for_delivery')
           .order('created_at', { ascending: false });
           
-        if (orderResponse.error) throw orderResponse.error;
+        if (error) throw error;
         
         // Ensure we have an array of orders (even if empty)
-        const rawOrders: RawOrder[] = orderResponse.data || [];
+        // Using type assertion to avoid deep type inference
+        const orders = (data || []) as RawOrder[];
         
-        if (rawOrders.length === 0) return [];
+        if (orders.length === 0) return [];
         
         // Process each order to add customer details
         const ordersWithDetails: Order[] = await Promise.all(
-          rawOrders.map(async (order: RawOrder, index) => {
+          orders.map(async (order, index) => {
             // Get customer name from profiles table
-            const profileResponse = await supabase
+            const { data: profileData, error: profileError } = await supabase
               .from('profiles')
               .select('first_name, last_name')
               .eq('id', order.user_id)
@@ -77,8 +78,9 @@ export default function DeliveryRoutesPage() {
             
             let customerName = 'Unknown Customer';
             
-            if (!profileResponse.error && profileResponse.data) {
-              const profile = profileResponse.data as CustomerProfile;
+            if (!profileError && profileData) {
+              // Use type assertion to avoid deep inference
+              const profile = profileData as CustomerProfile;
               const firstName = profile.first_name || '';
               const lastName = profile.last_name || '';
               customerName = `${firstName} ${lastName}`.trim() || 'Unknown Customer';
