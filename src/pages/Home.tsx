@@ -7,7 +7,7 @@ import { UserRoleDebug } from '@/components/UserRoleDebug';
 import { Card, CardContent } from '@/components/ui/card';
 
 const Home = () => {
-  const { isAuthenticated, userRole, loading } = useAuth();
+  const { isAuthenticated, userRole, loading, user } = useAuth();
 
   // Sample product categories with images
   const categories = [
@@ -60,28 +60,19 @@ const Home = () => {
           </div>
         )}
         
-        {isAuthenticated && !loading && (
+        {isAuthenticated && !loading && userRole === 'customer' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="md:col-span-2">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <h2 className="text-xl font-semibold text-gray-900">
-                  Welcome back, {userRole === 'admin' ? 'Admin' : 
-                              userRole === 'seller' ? 'Seller' : 
-                              userRole === 'delivery' ? 'Delivery Partner' : 
-                              'Customer'}!
+                  Welcome back, {user?.name || 'Customer'}!
                 </h2>
                 <p className="mt-2 text-gray-700">
-                  {userRole === 'admin' && 'Manage your store and users from your admin dashboard.'}
-                  {userRole === 'seller' && 'Manage your products and orders from your seller dashboard.'}
-                  {userRole === 'delivery' && 'View and manage your delivery assignments.'}
-                  {(userRole === 'customer' || !userRole) && 'Browse products and make purchases.'}
+                  Browse our latest products and make purchases. Explore the categories below!
                 </p>
                 <div className="mt-4">
                   <Button asChild>
-                    {userRole === 'admin' && <Link to="/admin">Go to Admin Dashboard</Link>}
-                    {userRole === 'seller' && <Link to="/seller">Go to Seller Dashboard</Link>}
-                    {userRole === 'delivery' && <Link to="/delivery">Go to Delivery Dashboard</Link>}
-                    {(userRole === 'customer' || !userRole) && <Link to="/account">Go to My Account</Link>}
+                    <Link to="/account">Go to My Account</Link>
                   </Button>
                 </div>
               </div>

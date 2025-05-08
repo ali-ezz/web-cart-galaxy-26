@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -19,6 +18,7 @@ import WelcomePage from "./pages/WelcomePage";
 import AuthConfirmationPage from "./pages/AuthConfirmationPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
+import Index from "./pages/Index";
 
 // Lazily loaded components (per-role functionality)
 const Home = lazy(() => import("./pages/Home"));
@@ -150,42 +150,17 @@ const App = () => (
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/welcome" element={<WelcomePage />} />
 
-                {/* Customer routes - home page is for customers only */}
-                <Route path="/" element={
-                  <CustomerRoute>
-                    <Home />
-                  </CustomerRoute>
-                } />
-                <Route path="/product/:id" element={
-                  <CustomerRoute>
-                    <ProductPage />
-                  </CustomerRoute>
-                } />
-                <Route path="/category/:category" element={
-                  <CustomerRoute>
-                    <CategoryPage />
-                  </CustomerRoute>
-                } />
-                <Route path="/search" element={
-                  <CustomerRoute>
-                    <SearchPage />
-                  </CustomerRoute>
-                } />
-                <Route path="/cart" element={
-                  <CustomerRoute>
-                    <CartPage />
-                  </CustomerRoute>
-                } />
-                <Route path="/wishlist" element={
-                  <CustomerRoute>
-                    <WishlistPage />
-                  </CustomerRoute>
-                } />
-                <Route path="/checkout-success" element={
-                  <CustomerRoute>
-                    <CheckoutSuccessPage />
-                  </CustomerRoute>
-                } />
+                {/* Root route - use Index component which handles proper routing */}
+                <Route path="/" element={<Index />} />
+
+                {/* Customer routes */}
+                <Route path="/home" element={<Home />} />
+                <Route path="/product/:id" element={<ProductPage />} />
+                <Route path="/category/:category" element={<CategoryPage />} />
+                <Route path="/search" element={<SearchPage />} />
+                <Route path="/cart" element={<CartPage />} />
+                <Route path="/wishlist" element={<WishlistPage />} />
+                <Route path="/checkout-success" element={<CheckoutSuccessPage />} />
                 
                 {/* Protected routes - require authentication */}
                 <Route path="/account/*" element={

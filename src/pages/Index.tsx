@@ -4,7 +4,7 @@ import Home from './Home';
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { Navigate, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { verifyUserConsistency } from "@/utils/authUtils";
 import LoginTroubleshooting from "@/components/LoginTroubleshooting";
 import { Loader2, RefreshCw, AlertTriangle } from "lucide-react";
@@ -74,8 +74,8 @@ const Index = () => {
           navigate('/delivery');
           break;
         case 'customer':
-          // Customer should stay on home page, just remove redirecting state
-          setIsRedirecting(false);
+          // For customers, stay on home page but ensure it renders properly
+          navigate('/home');
           break;
         default:
           // For unknown roles, stay on this page but show error
@@ -122,10 +122,8 @@ const Index = () => {
               description: `You are logged in as ${user?.name} with role: ${userRole}`,
             });
             
-            // If user has a non-customer role, redirect them
-            if (userRole !== 'customer') {
-              redirectToRoleDashboard(userRole);
-            }
+            // If user has a role, redirect them to appropriate page
+            redirectToRoleDashboard(userRole);
           }, 300);
           
           return () => clearTimeout(timer);
@@ -159,15 +157,11 @@ const Index = () => {
     verifyUser();
   }, [isAuthenticated, user, loading, toast, userRole, maxRetries]);
 
-  // Handle redirection for non-customer users
+  // Handle redirection for users with roles
   useEffect(() => {
     if (!loading && !verifying && isAuthenticated && userRole) {
-      if (userRole !== 'customer') {
-        console.log(`Detected non-customer role: ${userRole}, redirecting to appropriate dashboard...`);
-        redirectToRoleDashboard(userRole);
-      } else {
-        console.log("User is a customer, showing Home page");
-      }
+      console.log(`Detected role: ${userRole}, redirecting to appropriate dashboard...`);
+      redirectToRoleDashboard(userRole);
     }
   }, [isAuthenticated, userRole, loading, verifying]);
   
@@ -296,22 +290,18 @@ const Index = () => {
     );
   }
 
-  // Handle authentication issues - show proper error
+  // If not authenticated, redirect to login page
   if (!isAuthenticated && !loading) {
-    // Let them access the home page as a guest
     return (
-      <>
+      <div className="container mx-auto px-4 py-8">
         <Home />
         <Toaster />
-      </>
+      </div>
     );
   }
   
-  // Redirect non-customer users to appropriate dashboard
-  if (isRedirecting || (isAuthenticated && userRole && userRole !== 'customer')) {
-    console.log(`Redirecting from Index to appropriate dashboard, role: ${userRole}`);
-    
-    // A brief loading state while redirection happens
+  // If user is authenticated but we're waiting for redirection
+  if (isRedirecting) {
     return (
       <div className="flex flex-col justify-center items-center min-h-screen gap-4">
         <div className="animate-spin rounded-full h-12 w-12 border-4 border-shop-purple border-t-transparent"></div>
@@ -320,12 +310,12 @@ const Index = () => {
     );
   }
 
-  // Render Home for customers or non-authenticated users
+  // Default case: show Home for non-authenticated users
   return (
-    <>
+    <div className="container mx-auto px-4 py-8">
       <Home />
       <Toaster />
-    </>
+    </div>
   );
 };
 
