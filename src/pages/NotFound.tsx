@@ -7,6 +7,7 @@ import { Home, ArrowLeft, RefreshCw, BugPlay } from "lucide-react";
 import LoginTroubleshooting from "@/components/LoginTroubleshooting";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { AdvancedTroubleshooting } from "@/components/AdvancedTroubleshooting";
 
 const NotFound = () => {
   const location = useLocation();
@@ -141,7 +142,7 @@ const NotFound = () => {
               <li>Try reloading the page or logging out and back in</li>
             </ul>
             <div className="mt-4">
-              <LoginTroubleshooting />
+              <AdvancedTroubleshooting />
             </div>
             
             {checkingAuth ? (

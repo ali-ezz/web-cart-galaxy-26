@@ -43,7 +43,7 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authHeader);
     if (authError || !user) {
       return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
+        JSON.stringify({ error: "Unauthorized", details: authError?.message || "User not found" }),
         {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
           status: 401,
@@ -61,7 +61,10 @@ serve(async (req) => {
 
     if (roleError || !roleData) {
       return new Response(
-        JSON.stringify({ error: "Access denied. Admin privileges required." }),
+        JSON.stringify({ 
+          error: "Access denied. Admin privileges required.",
+          details: roleError?.message || "Role check failed" 
+        }),
         {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
           status: 403,
@@ -70,7 +73,20 @@ serve(async (req) => {
     }
 
     // Parse the request body
-    const { action, ...params } = await req.json();
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (e) {
+      return new Response(
+        JSON.stringify({ error: "Invalid JSON body" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        }
+      );
+    }
+
+    const { action, ...params } = requestBody;
 
     // Handle different admin actions based on the action parameter
     let responseData;
@@ -78,19 +94,31 @@ serve(async (req) => {
     switch (action) {
       case "get_users":
         // Get all users with their roles
+        console.log("Fetching users with admin function");
         const { data: users, error: usersError } = await supabaseClient.auth.admin.listUsers();
         
-        if (usersError) throw usersError;
+        if (usersError) {
+          console.error("Error fetching users:", usersError);
+          throw usersError;
+        }
+        
+        if (!users || !users.users) {
+          console.warn("No users returned from listUsers");
+          throw new Error("Failed to retrieve user data");
+        }
         
         // Get user roles from user_roles table
         const { data: userRoles, error: rolesError } = await supabaseClient
           .from("user_roles")
           .select("user_id, role");
           
-        if (rolesError) throw rolesError;
+        if (rolesError) {
+          console.error("Error fetching user roles:", rolesError);
+          throw rolesError;
+        }
         
         // Map roles to users
-        const rolesMap = new Map(userRoles.map(r => [r.user_id, r.role]));
+        const rolesMap = new Map(userRoles?.map(r => [r.user_id, r.role]) || []);
         
         // Format user data
         const formattedUsers = users.users.map(u => ({
@@ -302,9 +330,10 @@ serve(async (req) => {
       }
     );
   } catch (error) {
+    console.error("Admin function error:", error);
     // Return error response
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error.message || "Unknown error", stack: error.stack }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 400,

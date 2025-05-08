@@ -27,6 +27,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface UserData {
   id: string;
@@ -42,6 +43,7 @@ export default function AdminUsersPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
+  const [fetchError, setFetchError] = useState<string | null>(null);
   
   useEffect(() => {
     if (userRole !== 'admin') {
@@ -52,20 +54,41 @@ export default function AdminUsersPage() {
   const { data: users, isLoading, error, refetch } = useQuery({
     queryKey: ['adminUsers'],
     queryFn: async () => {
-      const { data: authUsers, error: authError } = await supabase.functions.invoke('admin_functions', {
-        body: {
-          action: 'get_users'
+      try {
+        console.log('Fetching admin users data...');
+        const { data: authUsers, error: authError } = await supabase.functions.invoke('admin_functions', {
+          body: {
+            action: 'get_users'
+          }
+        });
+        
+        if (authError) {
+          console.error('Error fetching users:', authError);
+          setFetchError(authError.message || 'Failed to fetch users data');
+          throw authError;
         }
-      });
-      
-      if (authError) throw authError;
-      return authUsers || [];
+        
+        if (!authUsers) {
+          console.warn('No users data returned');
+          setFetchError('No users data returned from server');
+          return [];
+        }
+        
+        console.log(`Successfully fetched ${authUsers.length} users`);
+        return authUsers;
+      } catch (err: any) {
+        console.error('Exception in fetchUsers:', err);
+        setFetchError(err.message || 'An unknown error occurred when fetching users');
+        throw err;
+      }
     },
     enabled: !!user && userRole === 'admin',
+    retry: 1,
   });
 
   const handleUpdateUserRole = async (userId: string, newRole: string) => {
     try {
+      console.log(`Updating user ${userId} role to ${newRole}...`);
       const { error } = await supabase.functions.invoke('admin_functions', {
         body: {
           action: 'update_user_role',
@@ -83,6 +106,7 @@ export default function AdminUsersPage() {
       
       refetch();
     } catch (error: any) {
+      console.error('Error updating role:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to update user role",
@@ -113,7 +137,7 @@ export default function AdminUsersPage() {
     );
   }
 
-  if (error) {
+  if (error || fetchError) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
@@ -121,7 +145,19 @@ export default function AdminUsersPage() {
           <p className="text-gray-600 mt-1">Error loading users</p>
         </div>
         <Card className="p-6">
-          <p className="text-red-500">Failed to load users: {(error as Error).message}</p>
+          <Alert variant="destructive" className="mb-4">
+            <AlertDescription>
+              Failed to load users: {fetchError || (error as Error).message}
+            </AlertDescription>
+          </Alert>
+          <div className="mt-2 text-sm text-gray-600">
+            <p>This may be due to:</p>
+            <ul className="list-disc pl-5 mt-1 space-y-1">
+              <li>Edge function errors</li>
+              <li>Database connection issues</li>
+              <li>Authentication problems</li>
+            </ul>
+          </div>
           <Button onClick={() => refetch()} className="mt-4">Retry</Button>
         </Card>
       </div>
@@ -217,7 +253,7 @@ export default function AdminUsersPage() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-6 text-gray-500">
-                    No users found
+                    {users && users.length === 0 ? "No users found" : "No matching users found"}
                   </TableCell>
                 </TableRow>
               )}
