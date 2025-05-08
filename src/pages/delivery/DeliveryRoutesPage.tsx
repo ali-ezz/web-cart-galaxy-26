@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
@@ -40,14 +39,8 @@ interface CustomerProfile {
   last_name?: string;
 }
 
-// Type for Supabase query response
-interface SupabaseQueryResult<T> {
-  data: T[] | null;
-  error: Error | null;
-}
-
-// Type for Supabase single query response
-interface SupabaseSingleResult<T> {
+// Simple type definitions to avoid complex inference
+interface SupabaseResponse<T> {
   data: T | null;
   error: Error | null;
 }
@@ -63,13 +56,16 @@ export default function DeliveryRoutesPage() {
       
       try {
         // Get active deliveries for this driver
-        const { data, error: ordersError }: SupabaseQueryResult<RawOrder> = await supabase
+        const response = await supabase
           .from('orders')
           .select('*')
           .eq('delivery_person_id', user.id)
           .eq('status', 'out_for_delivery')
           .order('created_at', { ascending: false });
           
+        const ordersError = response.error;
+        const data = response.data as RawOrder[] | null;
+        
         if (ordersError) throw ordersError;
         
         // Cast to proper type and ensure it's an array
@@ -81,20 +77,22 @@ export default function DeliveryRoutesPage() {
         const ordersWithDetails: Order[] = await Promise.all(
           orders.map(async (order, index) => {
             // Get customer name from profiles table
-            const { data: profileData, error: profileError }: SupabaseSingleResult<CustomerProfile> = await supabase
+            const profileResponse = await supabase
               .from('profiles')
               .select('first_name, last_name')
               .eq('id', order.user_id)
               .single();
               
+            const profileError = profileResponse.error;
+            const profileData = profileResponse.data as CustomerProfile | null;
+            
             if (profileError) {
               console.error('Error fetching profile:', profileError);
             }
               
             // Create customer name
-            const customerProfile = profileData as CustomerProfile | null;
-            const customerName = customerProfile ? 
-              `${customerProfile.first_name || ''} ${customerProfile.last_name || ''}`.trim() : 
+            const customerName = profileData ? 
+              `${profileData.first_name || ''} ${profileData.last_name || ''}`.trim() : 
               'Unknown Customer';
             
             // Return a properly typed Order object
