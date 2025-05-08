@@ -31,13 +31,46 @@ export const verifyUserConsistency = async (userId: string): Promise<boolean> =>
     if (!roleData) {
       console.log(`No role found for user ${userId}, creating default role`);
       
+      // Try to get role from user metadata first (for SSO users)
+      let roleToAssign: Database["public"]["Enums"]["user_role"] = 'customer';
+      
+      try {
+        // Get the user's metadata to check for role_request
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        
+        if (!userError && userData?.user?.user_metadata?.role_request) {
+          const requestedRole = userData.user.user_metadata.role_request as string;
+          if (['admin', 'seller', 'customer', 'delivery'].includes(requestedRole)) {
+            roleToAssign = requestedRole as Database["public"]["Enums"]["user_role"];
+            console.log(`Using role from metadata: ${roleToAssign}`);
+          }
+        }
+      } catch (metadataError) {
+        console.error("Error getting user metadata:", metadataError);
+        // Continue with default role
+      }
+      
       const { error: insertRoleError } = await supabase
         .from('user_roles')
-        .insert({ user_id: userId, role: 'customer' });
+        .insert({ user_id: userId, role: roleToAssign });
         
       if (insertRoleError) {
         console.error("Error creating default role:", insertRoleError);
-        return false;
+        
+        // If we get an RLS error, try with invoke repair function
+        if (insertRoleError.code === '42501') {
+          console.log("Attempting to repair via RPC function...");
+          const { data: repairData, error: repairError } = await supabase
+            .rpc('repair_user_entries', { user_id: userId });
+            
+          if (repairError) {
+            console.error("Repair function failed:", repairError);
+            return false;
+          }
+          console.log("Repair function succeeded:", repairData);
+        } else {
+          return false;
+        }
       }
     }
     
@@ -79,7 +112,7 @@ export const verifyUserConsistency = async (userId: string): Promise<boolean> =>
 /**
  * Attempts to repair the user's database entries if they are inconsistent
  * This is a more aggressive version of verifyUserConsistency that will
- * attempt to repair issues by recreating entries 
+ * attempt to repair issues by recreating entries via RPC
  * 
  * @param userId - The user's ID to repair
  * @returns A promise that resolves to a boolean indicating success
@@ -90,47 +123,16 @@ export const repairUserEntries = async (userId: string): Promise<boolean> => {
   try {
     console.log(`Attempting to repair entries for user ID: ${userId}`);
     
-    // First delete any potentially corrupted entries for this user
-    const { error: deleteRoleError } = await supabase
-      .from('user_roles')
-      .delete()
-      .eq('user_id', userId);
-    
-    if (deleteRoleError) {
-      console.warn("Error cleaning up user roles:", deleteRoleError);
-      // Continue anyway, as it may not exist
-    }
-    
-    // Create a fresh role entry
-    const { error: insertRoleError } = await supabase
-      .from('user_roles')
-      .insert({ user_id: userId, role: 'customer' });
+    // Call the database function to repair user entries
+    const { data, error } = await supabase
+      .rpc('repair_user_entries', { user_id: userId });
       
-    if (insertRoleError) {
-      console.error("Error recreating user role:", insertRoleError);
+    if (error) {
+      console.error("Error calling repair function:", error);
       return false;
     }
     
-    // Now make sure profile exists
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('id', userId)
-      .maybeSingle();
-    
-    // If no profile, create it
-    if (!profileData) {
-      const { error: insertProfileError } = await supabase
-        .from('profiles')
-        .insert({ id: userId });
-        
-      if (insertProfileError) {
-        console.error("Error creating profile:", insertProfileError);
-        return false;
-      }
-    }
-    
-    return true;
+    return data === true;
   } catch (error) {
     console.error("Exception in repairUserEntries:", error);
     return false;

@@ -5,15 +5,35 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Navigate } from "react-router-dom";
+import { verifyUserConsistency } from "@/utils/authUtils";
 
 const Index = () => {
-  const { isAuthenticated, userRole, loading, user } = useAuth();
+  const { isAuthenticated, userRole, loading, user, session } = useAuth();
   const { toast } = useToast();
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const [verifying, setVerifying] = useState(false);
 
   // Display a toast with user role information when loaded
   useEffect(() => {
     if (!loading && isAuthenticated && user) {
+      // Verify the user data consistency first
+      const verifyUser = async () => {
+        setVerifying(true);
+        if (user.id) {
+          const isConsistent = await verifyUserConsistency(user.id);
+          if (!isConsistent) {
+            toast({
+              title: "Account issue detected",
+              description: "Some account data is missing. Attempting to repair...",
+              variant: "destructive",
+            });
+          }
+        }
+        setVerifying(false);
+      };
+      
+      verifyUser();
+      
       // Add a small delay to ensure the toast appears after the page loads
       const timer = setTimeout(() => {
         toast({
@@ -28,7 +48,7 @@ const Index = () => {
 
   // Handle redirection for non-customer users
   useEffect(() => {
-    if (!loading && isAuthenticated && userRole && userRole !== 'customer') {
+    if (!loading && !verifying && isAuthenticated && userRole && userRole !== 'customer') {
       setIsRedirecting(true);
       // Give a moment for the UI to update before redirecting
       const timer = setTimeout(() => {
@@ -37,10 +57,10 @@ const Index = () => {
       
       return () => clearTimeout(timer);
     }
-  }, [isAuthenticated, userRole, loading]);
+  }, [isAuthenticated, userRole, loading, verifying]);
   
   // Show loading state
-  if (loading) {
+  if (loading || verifying) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-4 border-shop-purple border-t-transparent"></div>
