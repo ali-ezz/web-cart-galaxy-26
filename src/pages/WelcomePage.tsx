@@ -161,7 +161,7 @@ export default function WelcomePage() {
             break;
           case "customer":
           default:
-            navigate("/home");
+            navigate("/");
             break;
         }
       }, 300); // Short delay to ensure userRole is properly loaded

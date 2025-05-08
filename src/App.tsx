@@ -19,7 +19,6 @@ import WelcomePage from "./pages/WelcomePage";
 import AuthConfirmationPage from "./pages/AuthConfirmationPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
-import Index from "./pages/Index";
 
 // Lazily loaded components (per-role functionality)
 const Home = lazy(() => import("./pages/Home"));
@@ -110,6 +109,28 @@ function ProtectedRoute({ children, allowedRoles, redirectPath = '/login' }: Pro
   );
 }
 
+// Customer-only route - redirects other user types to their dashboard
+function CustomerRoute({ children }: { children: React.ReactNode }) {
+  const { userRole, isAuthenticated, loading } = useAuth();
+  
+  // Show loading state while checking auth
+  if (loading) {
+    return <LoadingFallback />;
+  }
+  
+  // If user is authenticated and not a customer, redirect to welcome page
+  if (isAuthenticated && userRole && userRole !== 'customer') {
+    console.log(`Redirecting non-customer user (${userRole}) to welcome page`);
+    return <Navigate to="/welcome" replace />;
+  }
+  
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      {children}
+    </Suspense>
+  );
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
@@ -129,44 +150,41 @@ const App = () => (
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/welcome" element={<WelcomePage />} />
 
-                {/* Root route - use Index component which handles proper routing */}
-                <Route path="/" element={<Index />} />
-                
-                {/* Customer routes with improved accessibility */}
-                <Route path="/home" element={
-                  <Suspense fallback={<LoadingFallback />}>
+                {/* Customer routes - home page is for customers only */}
+                <Route path="/" element={
+                  <CustomerRoute>
                     <Home />
-                  </Suspense>
+                  </CustomerRoute>
                 } />
                 <Route path="/product/:id" element={
-                  <Suspense fallback={<LoadingFallback />}>
+                  <CustomerRoute>
                     <ProductPage />
-                  </Suspense>
+                  </CustomerRoute>
                 } />
                 <Route path="/category/:category" element={
-                  <Suspense fallback={<LoadingFallback />}>
+                  <CustomerRoute>
                     <CategoryPage />
-                  </Suspense>
+                  </CustomerRoute>
                 } />
                 <Route path="/search" element={
-                  <Suspense fallback={<LoadingFallback />}>
+                  <CustomerRoute>
                     <SearchPage />
-                  </Suspense>
+                  </CustomerRoute>
                 } />
                 <Route path="/cart" element={
-                  <Suspense fallback={<LoadingFallback />}>
+                  <CustomerRoute>
                     <CartPage />
-                  </Suspense>
+                  </CustomerRoute>
                 } />
                 <Route path="/wishlist" element={
-                  <Suspense fallback={<LoadingFallback />}>
+                  <CustomerRoute>
                     <WishlistPage />
-                  </Suspense>
+                  </CustomerRoute>
                 } />
                 <Route path="/checkout-success" element={
-                  <Suspense fallback={<LoadingFallback />}>
+                  <CustomerRoute>
                     <CheckoutSuccessPage />
-                  </Suspense>
+                  </CustomerRoute>
                 } />
                 
                 {/* Protected routes - require authentication */}
