@@ -24,6 +24,7 @@ serve(async (req) => {
     const { action, ...data } = await req.json();
 
     let result;
+    console.log("Delivery function called with action:", action, "and data:", data);
 
     switch (action) {
       case 'get_available_orders':
@@ -38,7 +39,10 @@ serve(async (req) => {
           )
           .order('created_at', { ascending: false });
         
-        if (availableError) throw availableError;
+        if (availableError) {
+          console.error("Error fetching available orders:", availableError);
+          throw availableError;
+        }
         result = { orders: availableOrders };
         break;
 
@@ -56,7 +60,10 @@ serve(async (req) => {
           .select()
           .single();
         
-        if (assignmentError) throw assignmentError;
+        if (assignmentError) {
+          console.error("Error creating delivery assignment:", assignmentError);
+          throw assignmentError;
+        }
         
         // Update the order status
         const { error: orderError } = await supabase
@@ -66,22 +73,30 @@ serve(async (req) => {
           })
           .eq('id', order_id);
           
-        if (orderError) throw orderError;
+        if (orderError) {
+          console.error("Error updating order delivery status:", orderError);
+          throw orderError;
+        }
         result = assignment;
         break;
 
       case 'get_delivery_assignments':
         // Get assignments for a delivery person
+        const { delivery_person_id } = data; // Use the parameter directly from data
+        
         const { data: assignments, error: assignmentsError } = await supabase
           .from('delivery_assignments')
           .select(`
             *,
             order:orders(*)
           `)
-          .eq('delivery_person_id', data.delivery_person_id)
+          .eq('delivery_person_id', delivery_person_id)
           .order('assigned_at', { ascending: false });
         
-        if (assignmentsError) throw assignmentsError;
+        if (assignmentsError) {
+          console.error("Error fetching delivery assignments:", assignmentsError);
+          throw assignmentsError;
+        }
         result = assignments;
         break;
 
@@ -105,7 +120,10 @@ serve(async (req) => {
           .select()
           .single();
         
-        if (updateError) throw updateError;
+        if (updateError) {
+          console.error("Error updating delivery assignment:", updateError);
+          throw updateError;
+        }
         
         // Get the order ID
         const { data: assignmentData, error: getError } = await supabase
@@ -114,7 +132,10 @@ serve(async (req) => {
           .eq('id', assignment_id)
           .single();
           
-        if (getError || !assignmentData) throw getError || new Error('Assignment not found');
+        if (getError || !assignmentData) {
+          console.error("Error fetching assignment data:", getError);
+          throw getError || new Error('Assignment not found');
+        }
         
         // Update the order status
         const orderStatus = new_status === 'delivered' ? 'completed' : 'paid';
@@ -126,31 +147,42 @@ serve(async (req) => {
           })
           .eq('id', assignmentData.order_id);
           
-        if (orderUpdateError) throw orderUpdateError;
+        if (orderUpdateError) {
+          console.error("Error updating order status:", orderUpdateError);
+          throw orderUpdateError;
+        }
         result = updatedAssignment;
         break;
 
       case 'get_delivery_stats':
         // Get stats for a delivery person
-        const delivery_person_id = data.delivery_person_id;
+        const delivery_id = data.delivery_person_id;
+        
+        console.log("Getting delivery stats for id:", delivery_id);
         
         // Count assigned deliveries (not delivered)
         const { count: assignedCount, error: assignedError } = await supabase
           .from('delivery_assignments')
           .select('*', { count: 'exact' })
-          .eq('delivery_person_id', delivery_person_id)
+          .eq('delivery_person_id', delivery_id)
           .neq('status', 'delivered');
           
-        if (assignedError) throw assignedError;
+        if (assignedError) {
+          console.error("Error counting assigned deliveries:", assignedError);
+          throw assignedError;
+        }
         
         // Count completed deliveries
         const { count: completedCount, error: completedError } = await supabase
           .from('delivery_assignments')
           .select('*', { count: 'exact' })
-          .eq('delivery_person_id', delivery_person_id)
+          .eq('delivery_person_id', delivery_id)
           .eq('status', 'delivered');
           
-        if (completedError) throw completedError;
+        if (completedError) {
+          console.error("Error counting completed deliveries:", completedError);
+          throw completedError;
+        }
         
         // Calculate total earnings (placeholder - this would need to be implemented based on your payment model)
         const totalEarnings = 0; // Replace with actual calculation if available
@@ -171,6 +203,7 @@ serve(async (req) => {
       status: 200,
     });
   } catch (error) {
+    console.error("Delivery function error:", error);
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400,

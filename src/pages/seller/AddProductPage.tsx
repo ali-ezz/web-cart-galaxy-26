@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -142,7 +141,7 @@ export default function AddProductPage() {
     setIsSubmitting(true);
     
     try {
-      // Convert string values to appropriate types
+      // Convert string values to appropriate types and ensure seller_id is explicitly set
       const productData = {
         name: data.name,
         description: data.description,
@@ -150,8 +149,10 @@ export default function AddProductPage() {
         discounted_price: data.discountedPrice ? parseFloat(data.discountedPrice) : null,
         stock: parseInt(data.stock),
         category: data.category,
-        seller_id: user.id,
+        seller_id: user.id, // Explicitly set seller_id to the current user's ID
       };
+      
+      console.log("Adding product with seller_id:", user.id);
       
       // Insert the product into the database
       const { data: product, error } = await supabase
@@ -161,12 +162,13 @@ export default function AddProductPage() {
         .single();
 
       if (error) {
+        console.error("Product insert error:", error);
         throw error;
       }
 
       // If there's an image, upload it
       let imageUrl = null;
-      if (image) {
+      if (image && product) {
         imageUrl = await uploadImage(product.id);
         
         if (imageUrl) {

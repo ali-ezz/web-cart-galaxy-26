@@ -46,12 +46,11 @@ const Home = () => {
     );
   }
 
-  // If authenticated and not a customer, redirect logic is handled by Index.tsx
-  // This is just a fallback in case they manually navigate here
+  // If authenticated but not a customer, show a relevant message and redirect options
   if (isAuthenticated && userRole && userRole !== 'customer') {
     return (
       <div className="container mx-auto px-4 py-8 text-center">
-        <h2 className="text-2xl font-semibold mb-4">Redirecting...</h2>
+        <h2 className="text-2xl font-semibold mb-4">Welcome, {user?.name || userRole}!</h2>
         <p className="mb-4">Since you're logged in as a {userRole}, you'll be redirected to your dashboard.</p>
         <div className="flex justify-center gap-4 mt-6">
           <Button asChild variant="outline">

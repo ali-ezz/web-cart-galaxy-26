@@ -50,33 +50,44 @@ export default function DeliveryRoutesPage() {
       if (!user?.id) return [] as Order[];
       
       try {
+        console.log("Fetching delivery routes for user:", user.id);
+        
         // Type explicitly with DbOrder[] to avoid deep inference
-        const { data, error: fetchError } = await supabase
+        // Make sure to use 'assigned' instead of 'out_for_delivery' for delivery_status
+        const { data: ordersData, error: fetchError } = await supabase
           .from('orders')
           .select('*')
-          .eq('delivery_status', 'out_for_delivery')
+          .eq('delivery_status', 'assigned')
           .order('created_at', { ascending: false });
         
-        if (fetchError) throw fetchError;
+        if (fetchError) {
+          console.error("Error fetching orders:", fetchError);
+          throw fetchError;
+        }
         
         // Cast raw data to DbOrder[] to provide clear type boundaries
-        const ordersData = (data || []) as DbOrder[];
+        const orders = (ordersData || []) as DbOrder[];
+        console.log("Found orders:", orders.length);
         
-        if (ordersData.length === 0) return [] as Order[];
+        if (orders.length === 0) return [] as Order[];
         
         // Use simple array with clear type
         const processedOrders: Order[] = [];
         
         // Process each order one at a time
-        for (let i = 0; i < ordersData.length; i++) {
-          const order = ordersData[i];
+        for (let i = 0; i < orders.length; i++) {
+          const order = orders[i];
           
           // Get profile data with explicit type for response
-          const { data: profileData } = await supabase
+          const { data: profileData, error: profileError } = await supabase
             .from('profiles')
             .select('first_name, last_name')
             .eq('id', order.user_id)
             .single();
+          
+          if (profileError) {
+            console.warn("Could not fetch profile for user:", order.user_id, profileError);
+          }
           
           // Set default name
           let customerName = 'Unknown Customer';
@@ -103,9 +114,15 @@ export default function DeliveryRoutesPage() {
           });
         }
         
+        console.log("Processed orders:", processedOrders.length);
         return processedOrders;
       } catch (error) {
         console.error('Error fetching delivery routes:', error);
+        toast({
+          title: 'Error loading routes',
+          description: 'There was a problem loading your delivery routes.',
+          variant: 'destructive',
+        });
         throw error;
       }
     },
@@ -116,21 +133,101 @@ export default function DeliveryRoutesPage() {
   const openMapsWithAllDestinations = () => {
     if (!activeRoutes || activeRoutes.length === 0) return;
     
-    // Create a directions URL with multiple destinations
-    const destinations = activeRoutes.map(order => {
-      return encodeURIComponent(
-        `${order.shipping_address}, ${order.shipping_city}, ${order.shipping_state} ${order.shipping_postal_code}`
-      );
-    });
-    
-    // Open in Google Maps
-    window.open(`https://www.google.com/maps/dir/?api=1&destination=${destinations[0]}&waypoints=${destinations.slice(1).join('|')}`, '_blank');
+    try {
+      // Create a directions URL with multiple destinations
+      const destinations = activeRoutes.map(order => {
+        return encodeURIComponent(
+          `${order.shipping_address}, ${order.shipping_city}, ${order.shipping_state} ${order.shipping_postal_code}`
+        );
+      });
+      
+      // Open in Google Maps
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${destinations[0]}&waypoints=${destinations.slice(1).join('|')}`, '_blank');
+    } catch (error) {
+      console.error("Error opening maps:", error);
+      toast({
+        title: 'Error',
+        description: 'Could not open map directions.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const openSingleLocation = (address: string, city: string, state: string, postalCode: string) => {
-    const fullAddress = encodeURIComponent(`${address}, ${city}, ${state} ${postalCode}`);
-    window.open(`https://www.google.com/maps/search/?api=1&query=${fullAddress}`, '_blank');
+    try {
+      const fullAddress = encodeURIComponent(`${address}, ${city}, ${state} ${postalCode}`);
+      window.open(`https://www.google.com/maps/search/?api=1&query=${fullAddress}`, '_blank');
+    } catch (error) {
+      console.error("Error opening map:", error);
+      toast({
+        title: 'Error',
+        description: 'Could not open map for this address.',
+        variant: 'destructive',
+      });
+    }
   };
+
+  // Handle unauthorized access
+  if (!user) {
+    return (
+      <div className="container mx-auto px-4 py-8 text-center">
+        <Card className="p-8">
+          <AlertCircle className="mx-auto h-12 w-12 text-amber-500 mb-4" />
+          <h2 className="text-2xl font-bold mb-2">Authentication Required</h2>
+          <p className="text-gray-600 mb-4">Please log in to view delivery routes.</p>
+          <Button onClick={() => window.location.href = '/login'}>Go to Login</Button>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold">Delivery Routes</h1>
+          <p className="text-gray-600 mt-1">Plan and navigate your delivery stops</p>
+        </div>
+        
+        <div className="flex justify-center items-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-shop-purple" />
+          <span className="ml-2">Loading your routes...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold">Delivery Routes</h1>
+          <p className="text-gray-600 mt-1">Plan and navigate your delivery stops</p>
+        </div>
+        
+        <Card className="bg-red-50 border-red-200">
+          <CardHeader>
+            <CardTitle className="flex items-center text-red-700">
+              <AlertCircle className="mr-2 h-5 w-5" />
+              Error Loading Routes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-red-600">
+              There was a problem loading your delivery routes. Please try refreshing the page.
+            </p>
+            <Button 
+              onClick={() => window.location.reload()} 
+              variant="outline" 
+              className="mt-4"
+            >
+              Refresh
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -151,26 +248,7 @@ export default function DeliveryRoutesPage() {
         )}
       </div>
       
-      {isLoading ? (
-        <div className="flex justify-center items-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-shop-purple" />
-          <span className="ml-2">Loading your routes...</span>
-        </div>
-      ) : error ? (
-        <Card className="bg-red-50 border-red-200">
-          <CardHeader>
-            <CardTitle className="flex items-center text-red-700">
-              <AlertCircle className="mr-2 h-5 w-5" />
-              Error Loading Routes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-red-600">
-              There was a problem loading your delivery routes. Please try refreshing the page.
-            </p>
-          </CardContent>
-        </Card>
-      ) : activeRoutes && activeRoutes.length > 0 ? (
+      {activeRoutes && activeRoutes.length > 0 ? (
         <>
           <Card className="mb-6">
             <CardHeader className="pb-3">
