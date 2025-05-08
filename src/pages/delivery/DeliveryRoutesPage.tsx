@@ -40,6 +40,18 @@ interface CustomerProfile {
   last_name?: string;
 }
 
+// Type for Supabase query response
+interface SupabaseQueryResult<T> {
+  data: T[] | null;
+  error: Error | null;
+}
+
+// Type for Supabase single query response
+interface SupabaseSingleResult<T> {
+  data: T | null;
+  error: Error | null;
+}
+
 export default function DeliveryRoutesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -51,7 +63,7 @@ export default function DeliveryRoutesPage() {
       
       try {
         // Get active deliveries for this driver
-        const { data, error: ordersError } = await supabase
+        const { data, error: ordersError }: SupabaseQueryResult<RawOrder> = await supabase
           .from('orders')
           .select('*')
           .eq('delivery_person_id', user.id)
@@ -69,11 +81,15 @@ export default function DeliveryRoutesPage() {
         const ordersWithDetails: Order[] = await Promise.all(
           orders.map(async (order, index) => {
             // Get customer name from profiles table
-            const { data: profileData } = await supabase
+            const { data: profileData, error: profileError }: SupabaseSingleResult<CustomerProfile> = await supabase
               .from('profiles')
               .select('first_name, last_name')
               .eq('id', order.user_id)
               .single();
+              
+            if (profileError) {
+              console.error('Error fetching profile:', profileError);
+            }
               
             // Create customer name
             const customerProfile = profileData as CustomerProfile | null;
