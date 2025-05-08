@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -112,13 +111,8 @@ export default function AccountWishlist() {
   const handleAddToCart = (product: any) => {
     if (!product) return;
     
-    addToCart({
-      id: product.id,
-      name: product.name,
-      price: product.discounted_price || product.price,
-      image: product.image_url,
-      quantity: 1
-    });
+    // Fixed: Pass product ID as string instead of an object
+    addToCart(product.id);
     
     toast({
       title: "Added to Cart",
@@ -178,7 +172,7 @@ export default function AccountWishlist() {
   return (
     <CardContent className="pt-6">
       <div className="grid grid-cols-1 gap-6">
-        {wishlistItems.map((item) => (
+        {wishlistItems?.map((item) => (
           <div 
             key={item.id} 
             className="border rounded-md overflow-hidden flex flex-col sm:flex-row"

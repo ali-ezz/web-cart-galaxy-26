@@ -30,6 +30,7 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, SaveIcon, AlertTriangle } from 'lucide-react';
 
+// Define schema for the extended profile type
 const profileSchema = z.object({
   storeName: z.string().min(2, 'Store name must be at least 2 characters').max(50),
   contactEmail: z.string().email('Invalid email address'),
@@ -57,12 +58,38 @@ type ProfileFormValues = z.infer<typeof profileSchema>;
 type NotificationFormValues = z.infer<typeof notificationSchema>;
 type PaymentFormValues = z.infer<typeof paymentSchema>;
 
+// Define extended profile interface to include seller-specific fields
+interface SellerProfile {
+  id: string;
+  first_name?: string;
+  last_name?: string;
+  avatar_url?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  country?: string;
+  created_at: string;
+  updated_at: string;
+  question_responses: any;
+  // Seller specific fields
+  store_name?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  bio?: string;
+  website?: string;
+  tax_id?: string;
+  notification_preferences?: any;
+  payment_details?: any;
+}
+
 export default function SettingsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [sellerProfile, setSellerProfile] = useState(null);
+  const [sellerProfile, setSellerProfile] = useState<SellerProfile | null>(null);
 
   // Profile form
   const profileForm = useForm<ProfileFormValues>({
@@ -115,11 +142,12 @@ export default function SettingsPage() {
           
         if (error) throw error;
         
-        setSellerProfile(profile);
+        // Cast the profile to our extended SellerProfile type
+        setSellerProfile(profile as unknown as SellerProfile);
         
         // Update form values with profile data
         if (profile) {
-          // Set profile form values
+          // Set profile form values with defaults for potentially missing fields
           profileForm.reset({
             storeName: profile.store_name || '',
             contactEmail: profile.contact_email || user.email || '',
@@ -129,7 +157,7 @@ export default function SettingsPage() {
             taxId: profile.tax_id || '',
           });
           
-          // Set notification preferences
+          // Set notification preferences with defaults
           const notifications = profile.notification_preferences || {};
           notificationForm.reset({
             emailNotifications: notifications.emailNotifications !== false,
@@ -138,7 +166,7 @@ export default function SettingsPage() {
             lowStockAlerts: notifications.lowStockAlerts !== false,
           });
           
-          // Set payment details (securely storing these would be better practice)
+          // Set payment details with defaults
           const payment = profile.payment_details || {};
           paymentForm.reset({
             accountName: payment.accountName || '',
@@ -179,7 +207,7 @@ export default function SettingsPage() {
           website: data.website,
           tax_id: data.taxId,
           updated_at: new Date().toISOString(),
-        })
+        } as any) // Use type assertion to avoid TypeScript errors
         .eq('id', user.id);
         
       if (error) throw error;
@@ -212,7 +240,7 @@ export default function SettingsPage() {
         .update({
           notification_preferences: data,
           updated_at: new Date().toISOString(),
-        })
+        } as any) // Use type assertion
         .eq('id', user.id);
         
       if (error) throw error;
@@ -246,7 +274,7 @@ export default function SettingsPage() {
         .update({
           payment_details: data,
           updated_at: new Date().toISOString(),
-        })
+        } as any) // Use type assertion
         .eq('id', user.id);
         
       if (error) throw error;
