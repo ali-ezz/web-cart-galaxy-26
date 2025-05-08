@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { UserRoleDebug } from '@/components/UserRoleDebug';
 import { Card, CardContent } from '@/components/ui/card';
+import { Loader2 } from 'lucide-react';
 
 const Home = () => {
   const { isAuthenticated, userRole, loading, user } = useAuth();
@@ -32,6 +33,37 @@ const Home = () => {
       gradient: "from-purple-50 to-purple-100"
     },
   ];
+
+  // If still loading authentication state, show a loading spinner
+  if (loading) {
+    return (
+      <div className="container mx-auto flex justify-center items-center min-h-[60vh]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 mx-auto animate-spin text-shop-purple" />
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If authenticated and not a customer, redirect logic is handled by Index.tsx
+  // This is just a fallback in case they manually navigate here
+  if (isAuthenticated && userRole && userRole !== 'customer') {
+    return (
+      <div className="container mx-auto px-4 py-8 text-center">
+        <h2 className="text-2xl font-semibold mb-4">Redirecting...</h2>
+        <p className="mb-4">Since you're logged in as a {userRole}, you'll be redirected to your dashboard.</p>
+        <div className="flex justify-center gap-4 mt-6">
+          <Button asChild variant="outline">
+            <Link to={`/${userRole}`}>Go to {userRole} dashboard</Link>
+          </Button>
+          <Button asChild>
+            <Link to="/welcome">Go to welcome page</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -81,13 +113,6 @@ const Home = () => {
             <div className="flex flex-col">
               <UserRoleDebug />
             </div>
-          </div>
-        )}
-        
-        {loading && (
-          <div className="text-center p-8">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-shop-purple border-t-transparent"></div>
-            <p className="mt-4 text-gray-600">Loading...</p>
           </div>
         )}
 

@@ -63,25 +63,31 @@ const Index = () => {
     
     // Use setTimeout to ensure state updates have been processed
     setTimeout(() => {
-      switch (role) {
-        case 'admin':
-          navigate('/admin');
-          break;
-        case 'seller':
-          navigate('/seller');
-          break;
-        case 'delivery':
-          navigate('/delivery');
-          break;
-        case 'customer':
-          // For customers, stay on home page but ensure it renders properly
-          navigate('/home');
-          break;
-        default:
-          // For unknown roles, stay on this page but show error
-          setIsRedirecting(false);
-          setError("Unknown role detected. Please contact support.");
-          break;
+      try {
+        switch (role) {
+          case 'admin':
+            navigate('/admin');
+            break;
+          case 'seller':
+            navigate('/seller');
+            break;
+          case 'delivery':
+            navigate('/delivery');
+            break;
+          case 'customer':
+            // For customers, navigate to home page
+            navigate('/home');
+            break;
+          default:
+            // For unknown roles, stay on this page but show error
+            setIsRedirecting(false);
+            setError("Unknown role detected. Please contact support.");
+            break;
+        }
+      } catch (err) {
+        console.error("Navigation error:", err);
+        setIsRedirecting(false);
+        setError("Failed to navigate to your dashboard. Please try again.");
       }
     }, 100);
   };
@@ -157,9 +163,10 @@ const Index = () => {
     verifyUser();
   }, [isAuthenticated, user, loading, toast, userRole, maxRetries]);
 
-  // Handle redirection for users with roles
+  // Handle redirection for users with roles when component loads
   useEffect(() => {
-    if (!loading && !verifying && isAuthenticated && userRole) {
+    // If authenticated, not loading, not verifying, and has role
+    if (!loading && !verifying && isAuthenticated && userRole && !isRedirecting) {
       console.log(`Detected role: ${userRole}, redirecting to appropriate dashboard...`);
       redirectToRoleDashboard(userRole);
     }
@@ -290,7 +297,7 @@ const Index = () => {
     );
   }
 
-  // If not authenticated, redirect to login page
+  // If not authenticated, show home page for guest users
   if (!isAuthenticated && !loading) {
     return (
       <div className="container mx-auto px-4 py-8">
