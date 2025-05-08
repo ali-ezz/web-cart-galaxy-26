@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+
+import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,6 +16,7 @@ import {
   Star,
   AlertCircle
 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 interface SellerSummary {
   totalSales: number;
@@ -35,6 +37,9 @@ interface PendingOrdersResponse {
 export default function SellerDashboardPage() {
   const { user, userRole } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const [hasError, setHasError] = useState(false);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
   
   // Fetch seller dashboard summary
   const { data: summary, isLoading, error } = useQuery({
@@ -42,53 +47,103 @@ export default function SellerDashboardPage() {
     queryFn: async (): Promise<SellerSummary> => {
       if (!user?.id) return { totalSales: 0, activeProducts: 0, pendingOrders: 0 };
       
-      // Use the seller functions edge function to get data
-      const { data: salesData, error: salesError } = await supabase.functions.invoke<SellerSalesResponse>('seller_functions', {
-        body: {
-          action: 'get_seller_sales',
-          seller_id: user.id
+      try {
+        // Use the seller functions edge function to get data
+        console.log("Fetching sales data for seller:", user.id);
+        const { data: salesData, error: salesError } = await supabase.functions.invoke<SellerSalesResponse>('seller_functions', {
+          body: {
+            action: 'get_seller_sales',
+            seller_id: user.id
+          }
+        });
+        
+        if (salesError) {
+          console.error("Error fetching sales data:", salesError);
+          throw salesError;
         }
-      });
-      
-      if (salesError) throw salesError;
-      
-      const totalSales = salesData?.total || 0;
-      
-      // Get count of active products by this seller
-      const { count: activeProducts, error: productsError } = await supabase
-        .from('products')
-        .select('*', { count: 'exact' })
-        .eq('seller_id', user.id);
-      
-      if (productsError) throw productsError;
-      
-      // Get count of pending orders for this seller's products
-      const { data: pendingOrdersData, error: ordersError } = await supabase.functions.invoke<PendingOrdersResponse>('seller_functions', {
-        body: {
-          action: 'get_seller_pending_orders',
-          seller_id: user.id
+        
+        const totalSales = salesData?.total || 0;
+        
+        // Get count of active products by this seller
+        console.log("Fetching product count for seller:", user.id);
+        const { count: activeProducts, error: productsError } = await supabase
+          .from('products')
+          .select('*', { count: 'exact' })
+          .eq('seller_id', user.id);
+        
+        if (productsError) {
+          console.error("Error fetching product count:", productsError);
+          throw productsError;
         }
-      });
-      
-      if (ordersError) throw ordersError;
-      
-      return {
-        totalSales,
-        activeProducts: activeProducts || 0,
-        pendingOrders: pendingOrdersData?.count || 0
-      };
+        
+        // Get count of pending orders for this seller's products
+        console.log("Fetching pending orders for seller:", user.id);
+        try {
+          const { data: pendingOrdersData, error: ordersError } = await supabase.functions.invoke<PendingOrdersResponse>('seller_functions', {
+            body: {
+              action: 'get_seller_pending_orders',
+              seller_id: user.id
+            }
+          });
+          
+          if (ordersError) {
+            console.error("Error fetching pending orders:", ordersError);
+            throw ordersError;
+          }
+          
+          return {
+            totalSales,
+            activeProducts: activeProducts || 0,
+            pendingOrders: pendingOrdersData?.count || 0
+          };
+        } catch (pendingError) {
+          console.error("Error in pending orders fetch:", pendingError);
+          // Fall back to just showing sales and products
+          return {
+            totalSales,
+            activeProducts: activeProducts || 0,
+            pendingOrders: 0
+          };
+        }
+      } catch (error) {
+        console.error("Error fetching seller dashboard data:", error);
+        setHasError(true);
+        setErrorDetails(error instanceof Error ? error.message : String(error));
+        
+        // Return placeholder data
+        return { totalSales: 0, activeProducts: 0, pendingOrders: 0 };
+      }
     },
     enabled: !!user?.id && userRole === 'seller',
+    retry: 1, // Limit retries to avoid excessive failed attempts
   });
   
   useEffect(() => {
     // Redirect if not seller
-    if (userRole !== 'seller') {
-      navigate('/account');
+    if (userRole !== 'seller' && userRole !== undefined && !isLoading) {
+      console.log("Not a seller, redirecting to account page. Current role:", userRole);
+      toast({
+        title: "Access Restricted",
+        description: "You need seller permissions to access this page",
+        variant: "destructive",
+      });
+      navigate('/welcome');
     }
-  }, [userRole, navigate]);
+  }, [userRole, navigate, isLoading, toast]);
   
-  if (!user || userRole !== 'seller') {
+  useEffect(() => {
+    // Show toast on error
+    if (error) {
+      console.error("Error in seller dashboard query:", error);
+      toast({
+        title: "Dashboard Error",
+        description: "There was a problem loading your seller dashboard. Please try again later.",
+        variant: "destructive",
+      });
+    }
+  }, [error, toast]);
+  
+  if (!user || (userRole !== 'seller' && userRole !== undefined)) {
     return null; // Don't render anything while redirecting
   }
 
@@ -145,7 +200,7 @@ export default function SellerDashboardPage() {
     );
   }
 
-  if (error) {
+  if (error || hasError) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
@@ -157,11 +212,43 @@ export default function SellerDashboardPage() {
           <h3 className="text-lg font-medium mb-2">Error loading dashboard</h3>
           <p className="text-gray-600 mb-4">
             There was a problem loading your seller dashboard information.
+            {errorDetails && (
+              <span className="block mt-2 text-sm text-red-500 bg-red-50 p-2 rounded">
+                Error: {errorDetails}
+              </span>
+            )}
           </p>
-          <Button onClick={() => window.location.reload()}>
-            Refresh
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2 justify-center">
+            <Button onClick={() => window.location.reload()}>
+              Refresh
+            </Button>
+            <Button variant="outline" onClick={() => navigate('/welcome')}>
+              Go to Welcome Page
+            </Button>
+          </div>
         </Card>
+        
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold mb-4">Navigation</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {sellerMenuItems.map((item, index) => (
+              <Card 
+                key={index} 
+                className="p-4 cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => navigate(item.link)}
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 rounded-full bg-shop-purple bg-opacity-10 text-shop-purple">
+                    {item.icon}
+                  </div>
+                  <div>
+                    <h3 className="font-medium">{item.title}</h3>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }

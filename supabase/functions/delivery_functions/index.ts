@@ -82,7 +82,7 @@ serve(async (req) => {
 
       case 'get_delivery_assignments':
         // Get assignments for a delivery person
-        const { delivery_person_id } = data; // Use the parameter directly from data
+        const { delivery_person_id: assignedPerson } = data; // Renamed variable to avoid duplicate
         
         const { data: assignments, error: assignmentsError } = await supabase
           .from('delivery_assignments')
@@ -90,7 +90,7 @@ serve(async (req) => {
             *,
             order:orders(*)
           `)
-          .eq('delivery_person_id', delivery_person_id)
+          .eq('delivery_person_id', assignedPerson)
           .order('assigned_at', { ascending: false });
         
         if (assignmentsError) {
@@ -156,15 +156,15 @@ serve(async (req) => {
 
       case 'get_delivery_stats':
         // Get stats for a delivery person
-        const delivery_id = data.delivery_person_id;
+        const { delivery_person_id: statsPerson } = data; // Renamed to avoid duplicate
         
-        console.log("Getting delivery stats for id:", delivery_id);
+        console.log("Getting delivery stats for id:", statsPerson);
         
         // Count assigned deliveries (not delivered)
         const { count: assignedCount, error: assignedError } = await supabase
           .from('delivery_assignments')
           .select('*', { count: 'exact' })
-          .eq('delivery_person_id', delivery_id)
+          .eq('delivery_person_id', statsPerson)
           .neq('status', 'delivered');
           
         if (assignedError) {
@@ -176,7 +176,7 @@ serve(async (req) => {
         const { count: completedCount, error: completedError } = await supabase
           .from('delivery_assignments')
           .select('*', { count: 'exact' })
-          .eq('delivery_person_id', delivery_id)
+          .eq('delivery_person_id', statsPerson)
           .eq('status', 'delivered');
           
         if (completedError) {
