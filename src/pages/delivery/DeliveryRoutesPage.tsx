@@ -21,6 +21,19 @@ interface Order {
   stopNumber?: number;
 }
 
+// Basic order type from database without processing
+interface RawOrder {
+  id: string;
+  created_at: string;
+  status: string;
+  user_id: string;
+  shipping_address: string;
+  shipping_city: string;
+  shipping_state: string;
+  shipping_postal_code: string;
+  [key: string]: any; // Allow for other properties
+}
+
 export default function DeliveryRoutesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -32,7 +45,7 @@ export default function DeliveryRoutesPage() {
       
       try {
         // Get active deliveries for this driver
-        const { data: orders, error: ordersError } = await supabase
+        const { data, error: ordersError } = await supabase
           .from('orders')
           .select('*')
           .eq('delivery_person_id', user.id)
@@ -41,12 +54,14 @@ export default function DeliveryRoutesPage() {
           
         if (ordersError) throw ordersError;
         
+        // Cast to proper type
+        const orders = data as RawOrder[];
+        
         if (!orders || orders.length === 0) return [];
         
-        // Add customer name for each order
-        // Type explicitly to avoid deep instantiation issues
-        const ordersWithDetails = await Promise.all(
-          orders.map(async (order: any, index: number): Promise<Order> => {
+        // Process each order to add customer details
+        const ordersWithDetails: Order[] = await Promise.all(
+          orders.map(async (order, index) => {
             // Get customer name from profiles table
             const { data: customerProfile } = await supabase
               .from('profiles')
@@ -59,8 +74,15 @@ export default function DeliveryRoutesPage() {
               `${customerProfile.first_name || ''} ${customerProfile.last_name || ''}`.trim() : 
               'Unknown Customer';
             
+            // Return a properly typed Order object
             return {
-              ...order,
+              id: order.id,
+              created_at: order.created_at,
+              status: order.status,
+              shipping_address: order.shipping_address,
+              shipping_city: order.shipping_city,
+              shipping_state: order.shipping_state,
+              shipping_postal_code: order.shipping_postal_code,
               customer_name: customerName || 'Unknown Customer',
               stopNumber: index + 1
             };
