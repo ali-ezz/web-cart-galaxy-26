@@ -7,7 +7,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
 import { Header } from "@/components/Header";
-import { Footer } from "@/components/Footer";
 import { useAuth } from "@/context/AuthContext";
 import { Suspense, lazy } from "react";
 import { Loader2 } from "lucide-react";
@@ -46,6 +45,9 @@ const AddProductPage = lazy(() => import("./pages/seller/AddProductPage"));
 const ProductsPage = lazy(() => import("./pages/seller/ProductsPage"));
 const EditProductPage = lazy(() => import("./pages/seller/EditProductPage"));
 const OrdersPage = lazy(() => import("./pages/seller/OrdersPage"));
+const SalesPage = lazy(() => import("./pages/seller/SalesPage"));
+const AnalyticsPage = lazy(() => import("./pages/seller/AnalyticsPage"));
+const SettingsPage = lazy(() => import("./pages/seller/SettingsPage"));
 
 // Delivery pages
 const DeliveryDashboardPage = lazy(() => import("./pages/DeliveryDashboardPage"));
@@ -266,6 +268,24 @@ const App = () => (
                   </ProtectedRoute>
                 } />
                 
+                <Route path="/seller/sales" element={
+                  <ProtectedRoute allowedRoles={['seller']}>
+                    <SalesPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/seller/analytics" element={
+                  <ProtectedRoute allowedRoles={['seller']}>
+                    <AnalyticsPage />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/seller/settings" element={
+                  <ProtectedRoute allowedRoles={['seller']}>
+                    <SettingsPage />
+                  </ProtectedRoute>
+                } />
+                
                 {/* Delivery routes */}
                 <Route path="/delivery" element={
                   <ProtectedRoute allowedRoles={['delivery']}>
@@ -313,7 +333,7 @@ const App = () => (
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </main>
-            <Footer />
+            {/* Footer removed as requested */}
           </BrowserRouter>
         </TooltipProvider>
       </CartProvider>

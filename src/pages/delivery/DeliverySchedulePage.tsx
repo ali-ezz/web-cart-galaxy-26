@@ -1,234 +1,237 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { useNavigate } from 'react-router-dom';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  Calendar as CalendarIcon, 
-  Clock,
-  Save,
-  CheckCircle,
-} from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Calendar } from '@/components/ui/calendar';
+import { Loader2, Calendar as CalendarIcon, Clock, CheckCircle2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+
+const daysOfWeek = [
+  'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
+];
+
+const timeSlots = [
+  { id: 'morning', name: 'Morning', hours: '8:00 AM - 12:00 PM' },
+  { id: 'afternoon', name: 'Afternoon', hours: '12:00 PM - 4:00 PM' },
+  { id: 'evening', name: 'Evening', hours: '4:00 PM - 8:00 PM' }
+];
 
 export default function DeliverySchedulePage() {
-  const { user, userRole } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const { toast } = useToast();
   const [date, setDate] = useState<Date | undefined>(new Date());
-  const [availabilityByDay, setAvailabilityByDay] = useState({
-    monday: { morning: true, afternoon: true, evening: false },
-    tuesday: { morning: true, afternoon: true, evening: false },
-    wednesday: { morning: true, afternoon: true, evening: false },
-    thursday: { morning: true, afternoon: true, evening: false },
-    friday: { morning: true, afternoon: true, evening: false },
-    saturday: { morning: false, afternoon: false, evening: false },
-    sunday: { morning: false, afternoon: false, evening: false },
+  const [view, setView] = useState<'week' | 'calendar'>('week');
+  const [saving, setSaving] = useState(false);
+  
+  // Mock schedule data - in a real app, this would come from a database
+  const [weeklyAvailability, setWeeklyAvailability] = useState({
+    Monday: { morning: true, afternoon: true, evening: false },
+    Tuesday: { morning: true, afternoon: true, evening: false },
+    Wednesday: { morning: true, afternoon: true, evening: false },
+    Thursday: { morning: true, afternoon: true, evening: true },
+    Friday: { morning: true, afternoon: true, evening: false },
+    Saturday: { morning: false, afternoon: false, evening: false },
+    Sunday: { morning: false, afternoon: false, evening: false },
   });
-  
-  React.useEffect(() => {
-    if (userRole !== 'delivery') {
-      navigate('/account');
-    }
-  }, [userRole, navigate]);
-  
-  if (!user || userRole !== 'delivery') {
-    return null;
-  }
 
-  const handleSaveSchedule = () => {
-    toast({
-      title: "Schedule Saved",
-      description: "Your availability has been updated successfully",
-    });
-  };
-
-  const handleToggleAvailability = (day: string, time: string) => {
-    setAvailabilityByDay(prev => ({
+  const toggleAvailability = (day: string, slot: string) => {
+    setWeeklyAvailability(prev => ({
       ...prev,
       [day]: {
         ...prev[day as keyof typeof prev],
-        [time]: !prev[day as keyof typeof prev][time as keyof typeof prev[keyof typeof prev]]
+        [slot]: !prev[day as keyof typeof prev][slot as keyof typeof prev[keyof typeof prev]]
       }
     }));
   };
 
-  const weeklySchedule = [
-    { day: 'Monday', date: '2025-05-06', shifts: [{ time: '9:00 AM - 1:00 PM', orders: 5 }] },
-    { day: 'Tuesday', date: '2025-05-07', shifts: [{ time: '9:00 AM - 1:00 PM', orders: 3 }] },
-    { day: 'Wednesday', date: '2025-05-08', shifts: [{ time: '2:00 PM - 6:00 PM', orders: 4 }] },
-    { day: 'Thursday', date: '2025-05-09', shifts: [{ time: '9:00 AM - 1:00 PM', orders: 2 }] },
-    { day: 'Friday', date: '2025-05-10', shifts: [{ time: '9:00 AM - 1:00 PM', orders: 6 }] },
-  ];
+  const saveSchedule = async () => {
+    setSaving(true);
+    
+    try {
+      // In a real app, you would save this to the database
+      // await supabase.from('delivery_schedules').upsert({
+      //   user_id: user?.id,
+      //   schedule: weeklyAvailability,
+      //   updated_at: new Date().toISOString()
+      // });
+      
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      toast({
+        title: "Schedule Updated",
+        description: "Your availability has been successfully saved.",
+      });
+    } catch (error) {
+      console.error("Error saving schedule:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update your schedule. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold">Delivery Schedule</h1>
-        <p className="text-gray-600 mt-1">Manage your availability and schedule</p>
-      </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
         <div>
-          <Card className="p-6 mb-8">
-            <h2 className="text-xl font-semibold mb-4">Calendar</h2>
-            <div className="flex justify-center">
-              <Calendar
-                mode="single"
-                selected={date}
-                onSelect={setDate}
-                className="rounded-md border"
-              />
-            </div>
-          </Card>
-          
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">This Week's Schedule</h2>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Day</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Shift</TableHead>
-                  <TableHead>Orders</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {weeklySchedule.map((day, index) => (
-                  <TableRow key={index}>
-                    <TableCell className="font-medium">{day.day}</TableCell>
-                    <TableCell>{new Date(day.date).toLocaleDateString()}</TableCell>
-                    <TableCell>{day.shifts.map(shift => shift.time).join(', ')}</TableCell>
-                    <TableCell>{day.shifts.reduce((acc, shift) => acc + shift.orders, 0)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            
-            <div className="mt-4">
-              <Button variant="outline" className="w-full">
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                Export Schedule
-              </Button>
-            </div>
-          </Card>
+          <h1 className="text-3xl font-bold">Delivery Schedule</h1>
+          <p className="text-gray-600 mt-1">Manage your availability and working hours</p>
         </div>
         
-        <div>
-          <Card className="p-6 mb-8">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Set Your Availability</h2>
-              <Select defaultValue="recurring">
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Schedule Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="recurring">Recurring Weekly</SelectItem>
-                  <SelectItem value="custom">Custom Dates</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-4">
-              {Object.entries(availabilityByDay).map(([day, times]) => (
-                <div key={day} className="border rounded p-4">
-                  <h3 className="font-medium capitalize mb-2">{day}</h3>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div 
-                      className={`p-2 rounded cursor-pointer flex items-center justify-center ${
-                        times.morning ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'
-                      }`}
-                      onClick={() => handleToggleAvailability(day, 'morning')}
-                    >
-                      <Clock className="h-4 w-4 mr-1" />
-                      <span>Morning</span>
-                      {times.morning && <CheckCircle className="h-4 w-4 ml-1 text-green-600" />}
-                    </div>
-                    <div 
-                      className={`p-2 rounded cursor-pointer flex items-center justify-center ${
-                        times.afternoon ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'
-                      }`}
-                      onClick={() => handleToggleAvailability(day, 'afternoon')}
-                    >
-                      <Clock className="h-4 w-4 mr-1" />
-                      <span>Afternoon</span>
-                      {times.afternoon && <CheckCircle className="h-4 w-4 ml-1 text-green-600" />}
-                    </div>
-                    <div 
-                      className={`p-2 rounded cursor-pointer flex items-center justify-center ${
-                        times.evening ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'
-                      }`}
-                      onClick={() => handleToggleAvailability(day, 'evening')}
-                    >
-                      <Clock className="h-4 w-4 mr-1" />
-                      <span>Evening</span>
-                      {times.evening && <CheckCircle className="h-4 w-4 ml-1 text-green-600" />}
-                    </div>
+        <div className="mt-4 md:mt-0">
+          <Select value={view} onValueChange={(v) => setView(v as 'week' | 'calendar')}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="View" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="week">Weekly View</SelectItem>
+              <SelectItem value="calendar">Calendar View</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      
+      {view === 'week' ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Weekly Availability</CardTitle>
+            <CardDescription>Set your regular working hours for each day of the week</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {daysOfWeek.map((day) => (
+                <div key={day} className="border rounded-md p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-medium text-lg">{day}</h3>
+                    <Badge variant={
+                      Object.values(weeklyAvailability[day as keyof typeof weeklyAvailability]).some(Boolean) 
+                        ? 'default' 
+                        : 'outline'
+                    }>
+                      {Object.values(weeklyAvailability[day as keyof typeof weeklyAvailability]).some(Boolean) 
+                        ? 'Available' 
+                        : 'Unavailable'}
+                    </Badge>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {timeSlots.map((slot) => (
+                      <div key={slot.id} className="flex items-center space-x-4 border rounded-md p-3">
+                        <div className="flex-grow">
+                          <p className="font-medium">{slot.name}</p>
+                          <p className="text-sm text-gray-500">{slot.hours}</p>
+                        </div>
+                        <Switch
+                          id={`${day}-${slot.id}`}
+                          checked={weeklyAvailability[day as keyof typeof weeklyAvailability][slot.id as keyof typeof weeklyAvailability[keyof typeof weeklyAvailability]]}
+                          onCheckedChange={() => toggleAvailability(day, slot.id)}
+                        />
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
               
-              <Button onClick={handleSaveSchedule} className="w-full mt-4">
-                <Save className="mr-2 h-4 w-4" />
-                Save Schedule
-              </Button>
+              <div className="flex justify-end">
+                <Button 
+                  onClick={saveSchedule}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      Save Changes
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
-          </Card>
-          
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Time Off Requests</h2>
-            <div className="space-y-4">
-              <p className="text-gray-600">Submit requests for time off or vacation days</p>
-              <Select defaultValue="">
-                <SelectTrigger>
-                  <SelectValue placeholder="Request Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="vacation">Vacation</SelectItem>
-                  <SelectItem value="sick">Sick Leave</SelectItem>
-                  <SelectItem value="personal">Personal Day</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Start Date</p>
-                  <Button variant="outline" className="w-full justify-start">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    Select Date
-                  </Button>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">End Date</p>
-                  <Button variant="outline" className="w-full justify-start">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    Select Date
-                  </Button>
-                </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Calendar View</CardTitle>
+            <CardDescription>Set your availability for specific dates</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col md:flex-row gap-8">
+              <div className="flex-grow">
+                <Calendar
+                  mode="single"
+                  selected={date}
+                  onSelect={setDate}
+                  className="rounded-md border"
+                />
               </div>
               
-              <Button className="w-full mt-2">Submit Request</Button>
+              {date && (
+                <div className="w-full md:w-1/2 border rounded-md p-4">
+                  <div className="flex items-center mb-4">
+                    <CalendarIcon className="mr-2 h-5 w-5 text-shop-purple" />
+                    <h3 className="font-medium">{date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    {timeSlots.map((slot) => (
+                      <div key={slot.id} className="flex items-center justify-between border-b pb-2 last:border-0">
+                        <div className="flex items-center">
+                          <Clock className="mr-2 h-4 w-4 text-gray-500" />
+                          <div>
+                            <p className="font-medium">{slot.name}</p>
+                            <p className="text-sm text-gray-500">{slot.hours}</p>
+                          </div>
+                        </div>
+                        
+                        <Switch
+                          id={`date-${date.toISOString()}-${slot.id}`}
+                          checked={weeklyAvailability[date.toLocaleDateString('en-US', { weekday: 'long' }) as keyof typeof weeklyAvailability][slot.id as keyof typeof weeklyAvailability[keyof typeof weeklyAvailability]]}
+                          onCheckedChange={() => toggleAvailability(date.toLocaleDateString('en-US', { weekday: 'long' }), slot.id)}
+                        />
+                      </div>
+                    ))}
+                    
+                    <Button 
+                      className="w-full mt-4"
+                      onClick={saveSchedule}
+                      disabled={saving}
+                    >
+                      {saving ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        'Save Availability'
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
-          </Card>
-        </div>
-      </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
