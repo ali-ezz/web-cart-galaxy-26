@@ -134,7 +134,7 @@ export default function SettingsPage() {
       try {
         setIsLoading(true);
         
-        const { data: profile, error } = await supabase
+        const { data, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', user.id)
@@ -143,7 +143,8 @@ export default function SettingsPage() {
         if (error) throw error;
         
         // Cast the profile to our extended SellerProfile type
-        setSellerProfile(profile as unknown as SellerProfile);
+        const profile = data as unknown as SellerProfile;
+        setSellerProfile(profile);
         
         // Update form values with profile data
         if (profile) {
@@ -197,17 +198,20 @@ export default function SettingsPage() {
     try {
       setIsSaving(true);
       
+      // Use type assertion to make TypeScript happy
+      const updateData = {
+        store_name: data.storeName,
+        contact_email: data.contactEmail,
+        contact_phone: data.contactPhone,
+        bio: data.bio,
+        website: data.website,
+        tax_id: data.taxId,
+        updated_at: new Date().toISOString(),
+      } as any;
+      
       const { error } = await supabase
         .from('profiles')
-        .update({
-          store_name: data.storeName,
-          contact_email: data.contactEmail,
-          contact_phone: data.contactPhone,
-          bio: data.bio,
-          website: data.website,
-          tax_id: data.taxId,
-          updated_at: new Date().toISOString(),
-        } as any) // Use type assertion to avoid TypeScript errors
+        .update(updateData)
         .eq('id', user.id);
         
       if (error) throw error;
@@ -240,7 +244,7 @@ export default function SettingsPage() {
         .update({
           notification_preferences: data,
           updated_at: new Date().toISOString(),
-        } as any) // Use type assertion
+        } as any)
         .eq('id', user.id);
         
       if (error) throw error;
@@ -274,7 +278,7 @@ export default function SettingsPage() {
         .update({
           payment_details: data,
           updated_at: new Date().toISOString(),
-        } as any) // Use type assertion
+        } as any)
         .eq('id', user.id);
         
       if (error) throw error;

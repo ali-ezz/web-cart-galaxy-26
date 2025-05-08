@@ -44,26 +44,28 @@ export default function DeliveryRoutesPage() {
         if (!orders || orders.length === 0) return [];
         
         // Add customer name for each order
-        // Fix: Use explicit type annotation and avoid complex type inference
-        const ordersWithDetails: Order[] = await Promise.all(orders.map(async (order, index) => {
-          // Get customer name from profiles table
-          const { data: customerProfile } = await supabase
-            .from('profiles')
-            .select('first_name, last_name')
-            .eq('id', order.user_id)
-            .single();
+        // Type explicitly to avoid deep instantiation issues
+        const ordersWithDetails = await Promise.all(
+          orders.map(async (order: any, index: number): Promise<Order> => {
+            // Get customer name from profiles table
+            const { data: customerProfile } = await supabase
+              .from('profiles')
+              .select('first_name, last_name')
+              .eq('id', order.user_id)
+              .single();
+              
+            // Create customer name
+            const customerName = customerProfile ? 
+              `${customerProfile.first_name || ''} ${customerProfile.last_name || ''}`.trim() : 
+              'Unknown Customer';
             
-          // Create customer name
-          const customerName = customerProfile ? 
-            `${customerProfile.first_name || ''} ${customerProfile.last_name || ''}`.trim() : 
-            'Unknown Customer';
-          
-          return {
-            ...order,
-            customer_name: customerName || 'Unknown Customer',
-            stopNumber: index + 1
-          };
-        }));
+            return {
+              ...order,
+              customer_name: customerName || 'Unknown Customer',
+              stopNumber: index + 1
+            };
+          })
+        );
         
         return ordersWithDetails;
       } catch (error) {
