@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
@@ -49,65 +48,57 @@ export default function DeliveryRoutesPage() {
     queryFn: async () => {
       if (!user?.id) return [];
       
+      // Using a simplified approach to avoid type instantiation issues
       try {
         // Get active deliveries for this driver
-        const { data, error } = await supabase
+        const { data: rawData, error: queryError } = await supabase
           .from('orders')
           .select('*')
           .eq('delivery_person_id', user.id)
           .eq('status', 'out_for_delivery')
           .order('created_at', { ascending: false });
           
-        if (error) throw error;
+        if (queryError) throw queryError;
         
-        // Instead of inferring types, explicitly cast the data
-        // This breaks the deep type inference chain that's causing the error
-        const ordersData = data as any[] || [];
+        // Force type as a simple array first to avoid deep inference
+        const rawOrders = (rawData || []) as any[];
         
-        if (ordersData.length === 0) return [];
+        if (rawOrders.length === 0) return [];
         
         // Process each order to add customer details
-        const ordersWithDetails: Order[] = await Promise.all(
-          ordersData.map(async (orderData, index) => {
-            // Explicitly cast to our RawOrder type
-            const order: RawOrder = orderData;
-            
+        const processedOrders = await Promise.all(
+          rawOrders.map(async (rawOrder, index) => {
             // Get customer name from profiles table
-            const profileResult = await supabase
+            const { data: profileData, error: profileError } = await supabase
               .from('profiles')
               .select('first_name, last_name')
-              .eq('id', order.user_id)
+              .eq('id', rawOrder.user_id)
               .single();
             
             let customerName = 'Unknown Customer';
             
-            if (!profileResult.error && profileResult.data) {
-              // Explicitly cast to our CustomerProfile type
-              const profile: CustomerProfile = {
-                first_name: profileResult.data.first_name,
-                last_name: profileResult.data.last_name
-              };
-              const firstName = profile.first_name || '';
-              const lastName = profile.last_name || '';
+            if (!profileError && profileData) {
+              const firstName = profileData.first_name || '';
+              const lastName = profileData.last_name || '';
               customerName = `${firstName} ${lastName}`.trim() || 'Unknown Customer';
             }
             
             // Return a properly typed Order object
             return {
-              id: order.id,
-              created_at: order.created_at,
-              status: order.status,
-              shipping_address: order.shipping_address,
-              shipping_city: order.shipping_city,
-              shipping_state: order.shipping_state,
-              shipping_postal_code: order.shipping_postal_code,
+              id: rawOrder.id,
+              created_at: rawOrder.created_at,
+              status: rawOrder.status,
+              shipping_address: rawOrder.shipping_address,
+              shipping_city: rawOrder.shipping_city,
+              shipping_state: rawOrder.shipping_state,
+              shipping_postal_code: rawOrder.shipping_postal_code,
               customer_name: customerName,
               stopNumber: index + 1
-            };
+            } as Order;
           })
         );
         
-        return ordersWithDetails;
+        return processedOrders;
       } catch (error) {
         console.error('Error fetching delivery routes:', error);
         throw error;
