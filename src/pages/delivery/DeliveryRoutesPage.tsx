@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -34,6 +34,12 @@ interface RawOrder {
   [key: string]: any; // Allow for other properties
 }
 
+// Customer profile type from database
+interface CustomerProfile {
+  first_name?: string;
+  last_name?: string;
+}
+
 export default function DeliveryRoutesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -54,22 +60,23 @@ export default function DeliveryRoutesPage() {
           
         if (ordersError) throw ordersError;
         
-        // Cast to proper type
-        const orders = data as RawOrder[];
+        // Cast to proper type and ensure it's an array
+        const orders = (data || []) as RawOrder[];
         
-        if (!orders || orders.length === 0) return [];
+        if (orders.length === 0) return [];
         
         // Process each order to add customer details
         const ordersWithDetails: Order[] = await Promise.all(
           orders.map(async (order, index) => {
             // Get customer name from profiles table
-            const { data: customerProfile } = await supabase
+            const { data: profileData } = await supabase
               .from('profiles')
               .select('first_name, last_name')
               .eq('id', order.user_id)
               .single();
               
             // Create customer name
+            const customerProfile = profileData as CustomerProfile | null;
             const customerName = customerProfile ? 
               `${customerProfile.first_name || ''} ${customerProfile.last_name || ''}`.trim() : 
               'Unknown Customer';
