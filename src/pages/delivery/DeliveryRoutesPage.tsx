@@ -39,12 +39,6 @@ interface CustomerProfile {
   last_name?: string;
 }
 
-// Simple type definitions to avoid complex inference
-interface SupabaseResponse<T> {
-  data: T | null;
-  error: Error | null;
-}
-
 export default function DeliveryRoutesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -56,44 +50,38 @@ export default function DeliveryRoutesPage() {
       
       try {
         // Get active deliveries for this driver
-        const response = await supabase
+        const ordersResponse = await supabase
           .from('orders')
           .select('*')
           .eq('delivery_person_id', user.id)
           .eq('status', 'out_for_delivery')
           .order('created_at', { ascending: false });
           
-        const ordersError = response.error;
-        const data = response.data as RawOrder[] | null;
+        if (ordersResponse.error) throw ordersResponse.error;
         
-        if (ordersError) throw ordersError;
+        // Ensure we have an array of orders (even if empty)
+        const rawOrders = ordersResponse.data || [];
         
-        // Cast to proper type and ensure it's an array
-        const orders = (data || []) as RawOrder[];
-        
-        if (orders.length === 0) return [];
+        if (rawOrders.length === 0) return [];
         
         // Process each order to add customer details
         const ordersWithDetails: Order[] = await Promise.all(
-          orders.map(async (order, index) => {
+          rawOrders.map(async (order: RawOrder, index) => {
             // Get customer name from profiles table
             const profileResponse = await supabase
               .from('profiles')
               .select('first_name, last_name')
               .eq('id', order.user_id)
               .single();
-              
-            const profileError = profileResponse.error;
-            const profileData = profileResponse.data as CustomerProfile | null;
             
-            if (profileError) {
-              console.error('Error fetching profile:', profileError);
+            let customerName = 'Unknown Customer';
+            
+            if (!profileResponse.error && profileResponse.data) {
+              const profile = profileResponse.data;
+              const firstName = profile.first_name || '';
+              const lastName = profile.last_name || '';
+              customerName = `${firstName} ${lastName}`.trim() || 'Unknown Customer';
             }
-              
-            // Create customer name
-            const customerName = profileData ? 
-              `${profileData.first_name || ''} ${profileData.last_name || ''}`.trim() : 
-              'Unknown Customer';
             
             // Return a properly typed Order object
             return {
@@ -104,7 +92,7 @@ export default function DeliveryRoutesPage() {
               shipping_city: order.shipping_city,
               shipping_state: order.shipping_state,
               shipping_postal_code: order.shipping_postal_code,
-              customer_name: customerName || 'Unknown Customer',
+              customer_name: customerName,
               stopNumber: index + 1
             };
           })
