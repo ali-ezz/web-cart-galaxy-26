@@ -3,7 +3,7 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
-import ProductCard from '@/components/ProductCard';
+import { ProductCard } from '@/components/ProductCard';
 import { Loader2 } from 'lucide-react';
 
 interface Product {
@@ -62,14 +62,16 @@ export default function RelatedProducts({ category, currentProductId }: RelatedP
       {relatedProducts.map((product) => (
         <Link to={`/product/${product.id}`} key={product.id}>
           <ProductCard
-            id={product.id}
-            name={product.name}
-            category={product.category}
-            price={product.price}
-            discountedPrice={product.discounted_price}
-            imageUrl={product.image_url || '/placeholder.svg'}
-            rating={product.rating}
-            reviewCount={product.reviews_count}
+            product={{
+              id: product.id,
+              name: product.name,
+              category: product.category,
+              price: product.price,
+              discountedPrice: product.discounted_price,
+              imageUrl: product.image_url || '/placeholder.svg',
+              rating: product.rating,
+              reviews: product.reviews_count
+            }}
           />
         </Link>
       ))}

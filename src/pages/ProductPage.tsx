@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Helmet } from 'react-helmet';
+import { HelmetProvider, Helmet } from 'react-helmet-async';
 import ProductDetail from '@/components/product/ProductDetail';
 import RelatedProducts from '@/components/product/RelatedProducts';
 import { Button } from '@/components/ui/button';
@@ -54,7 +54,7 @@ export default function ProductPage() {
         
         if (!data) return null;
         
-        // Fetch reviews
+        // Fetch reviews with user profiles
         const { data: reviewsData, error: reviewsError } = await supabase
           .from('reviews')
           .select(`
@@ -62,9 +62,11 @@ export default function ProductPage() {
             rating,
             comment,
             created_at,
-            user:user_id (
-              name:profiles!inner(first_name, last_name),
-              avatar_url:profiles!inner(avatar_url)
+            user_id,
+            profiles:user_id (
+              first_name,
+              last_name,
+              avatar_url
             )
           `)
           .eq('product_id', id)
@@ -75,10 +77,13 @@ export default function ProductPage() {
         
         // Process reviews to format user names
         const processedReviews = reviewsData?.map(review => ({
-          ...review,
+          id: review.id,
+          rating: review.rating,
+          comment: review.comment,
+          created_at: review.created_at,
           user: {
-            name: review.user.name.first_name + ' ' + review.user.name.last_name,
-            avatar_url: review.user.avatar_url,
+            name: review.profiles ? `${review.profiles.first_name || ''} ${review.profiles.last_name || ''}`.trim() : 'Anonymous',
+            avatar_url: review.profiles ? review.profiles.avatar_url : null,
           }
         }));
         
@@ -120,7 +125,7 @@ export default function ProductPage() {
   }
 
   return (
-    <>
+    <HelmetProvider>
       <Helmet>
         <title>{product.name} | Your Shop</title>
         <meta name="description" content={product.description || `Buy ${product.name} at our store`} />
@@ -155,6 +160,6 @@ export default function ProductPage() {
           <RelatedProducts category={product.category} currentProductId={product.id} />
         </div>
       </div>
-    </>
+    </HelmetProvider>
   );
 }

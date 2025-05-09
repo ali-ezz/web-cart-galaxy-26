@@ -54,7 +54,7 @@ interface ProductDetailProps {
 }
 
 export default function ProductDetail({ product }: ProductDetailProps) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { addToCart } = useCart();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -66,7 +66,8 @@ export default function ProductDetail({ product }: ProductDetailProps) {
     setIsAddingToCart(true);
     
     try {
-      addToCart({
+      // Create a cart item object from the product data
+      const cartItem = {
         id: product.id,
         name: product.name,
         price: product.price,
@@ -75,7 +76,10 @@ export default function ProductDetail({ product }: ProductDetailProps) {
         category: product.category,
         stock: product.stock,
         quantity: 1,
-      });
+      };
+      
+      // Add the cart item to the cart context
+      addToCart(cartItem);
       
       toast({
         title: "Added to Cart",
@@ -111,7 +115,10 @@ export default function ProductDetail({ product }: ProductDetailProps) {
       const { data: existingItem, error: checkError } = await supabase
         .from('wishlists')
         .select('id')
-        .match({ product_id: product.id })
+        .match({ 
+          product_id: product.id,
+          user_id: user?.id
+        })
         .maybeSingle();
       
       if (checkError) throw checkError;
@@ -133,7 +140,10 @@ export default function ProductDetail({ product }: ProductDetailProps) {
         // Add to wishlist
         const { error: addError } = await supabase
           .from('wishlists')
-          .insert({ product_id: product.id });
+          .insert({ 
+            product_id: product.id,
+            user_id: user?.id 
+          });
         
         if (addError) throw addError;
         
