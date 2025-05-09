@@ -1,10 +1,22 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Product } from '@/lib/data';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/context/CartContext';
 import { Heart, ShoppingCart, Star } from 'lucide-react';
+
+export interface Product {
+  id: string;
+  name: string;
+  price: number;
+  discountedPrice?: number | null;
+  imageUrl: string;
+  rating: number;
+  reviews: number;
+  category: string;
+  description: string;  // Added this field
+  stock: number;        // Added this field
+}
 
 interface ProductCardProps {
   product: Product;

@@ -75,17 +75,24 @@ export default function ProductPage() {
           
         if (reviewsError) throw reviewsError;
         
-        // Process reviews to format user names
-        const processedReviews = reviewsData?.map(review => ({
-          id: review.id,
-          rating: review.rating,
-          comment: review.comment,
-          created_at: review.created_at,
-          user: {
-            name: review.profiles ? `${review.profiles.first_name || ''} ${review.profiles.last_name || ''}`.trim() : 'Anonymous',
-            avatar_url: review.profiles ? review.profiles.avatar_url : null,
-          }
-        }));
+        // Process reviews to format user names - with null checks
+        const processedReviews = reviewsData?.map(review => {
+          // Handle potential null/undefined profiles
+          const firstName = review.profiles?.first_name || '';
+          const lastName = review.profiles?.last_name || '';
+          const avatarUrl = review.profiles?.avatar_url || null;
+          
+          return {
+            id: review.id,
+            rating: review.rating,
+            comment: review.comment,
+            created_at: review.created_at,
+            user: {
+              name: firstName && lastName ? `${firstName} ${lastName}`.trim() : 'Anonymous',
+              avatar_url: avatarUrl
+            }
+          };
+        });
         
         return {
           ...data,

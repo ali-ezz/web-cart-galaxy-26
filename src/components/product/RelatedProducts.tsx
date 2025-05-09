@@ -15,6 +15,8 @@ interface Product {
   rating: number;
   reviews_count: number;
   category: string;
+  description: string;
+  stock: number;
 }
 
 interface RelatedProductsProps {
@@ -30,7 +32,7 @@ export default function RelatedProducts({ category, currentProductId }: RelatedP
       try {
         const { data, error } = await supabase
           .from('products')
-          .select('id, name, price, discounted_price, image_url, rating, reviews_count, category')
+          .select('id, name, price, discounted_price, image_url, rating, reviews_count, category, description, stock')
           .eq('category', category)
           .neq('id', currentProductId)
           .limit(4);
@@ -70,7 +72,9 @@ export default function RelatedProducts({ category, currentProductId }: RelatedP
               discountedPrice: product.discounted_price,
               imageUrl: product.image_url || '/placeholder.svg',
               rating: product.rating,
-              reviews: product.reviews_count
+              reviews: product.reviews_count,
+              description: product.description || '',
+              stock: product.stock
             }}
           />
         </Link>

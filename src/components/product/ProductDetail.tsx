@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -76,10 +75,11 @@ export default function ProductDetail({ product }: ProductDetailProps) {
         category: product.category,
         stock: product.stock,
         quantity: 1,
+        description: product.description || '' // Add missing description
       };
       
-      // Add the cart item to the cart context
-      addToCart(cartItem);
+      // Add the product ID to the cart context
+      addToCart(product.id);
       
       toast({
         title: "Added to Cart",
