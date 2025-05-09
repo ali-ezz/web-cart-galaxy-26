@@ -1,255 +1,384 @@
 
-import React from 'react';
-import { CardContent } from '@/components/ui/card';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, ShoppingBag, AlertCircle, Package, Check } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
+import { 
+  Card, 
+  CardContent, 
+  CardHeader, 
+  CardTitle
+} from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetClose,
+  SheetFooter,
+} from '@/components/ui/sheet';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
+import { 
+  Loader2, 
+  Package, 
+  Truck, 
+  AlertCircle, 
+  EyeIcon, 
+  CheckCircle, 
+  Clock
+} from 'lucide-react';
 
 interface OrderItem {
   id: string;
   product_id: string;
+  product_name: string;
   quantity: number;
   price: number;
-  product_name?: string;
-  product_image?: string;
 }
 
 interface Order {
   id: string;
   created_at: string;
-  status: string;
   total: number;
-  tracking_number?: string;
-  items?: OrderItem[];
+  status: string;
+  delivery_status: string;
+  tracking_number: string | null;
+  shipping_address: string;
+  shipping_city: string;
+  shipping_state: string;
+  shipping_postal_code: string;
+  items: OrderItem[];
 }
+
+const statusColors = {
+  pending: "bg-yellow-100 text-yellow-800",
+  paid: "bg-blue-100 text-blue-800",
+  processing: "bg-purple-100 text-purple-800",
+  shipped: "bg-indigo-100 text-indigo-800",
+  delivered: "bg-green-100 text-green-800",
+  completed: "bg-green-100 text-green-800",
+  canceled: "bg-red-100 text-red-800",
+};
+
+const deliveryStatusColors = {
+  pending: "bg-yellow-100 text-yellow-800",
+  assigned: "bg-blue-100 text-blue-800",
+  in_transit: "bg-purple-100 text-purple-800",
+  delivered: "bg-green-100 text-green-800",
+};
+
+const orderStatuses = [
+  "pending", "paid", "processing", "shipped", "delivered", "completed", "canceled"
+];
 
 export default function AccountOrders() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   
-  const { data: orders, isLoading, error } = useQuery({
-    queryKey: ['customerOrders', user?.id],
-    queryFn: async () => {
-      if (!user?.id) return [];
-      
-      try {
-        // Get orders
-        const { data: ordersData, error: ordersError } = await supabase
-          .from('orders')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-          
-        if (ordersError) throw ordersError;
-        
-        if (!ordersData || ordersData.length === 0) return [];
-        
-        // For each order, fetch order items
-        const ordersWithItems = await Promise.all(
-          ordersData.map(async (order) => {
-            const { data: itemsData, error: itemsError } = await supabase
-              .from('order_items')
-              .select(`
-                id,
-                quantity,
-                price,
-                product_id
-              `)
-              .eq('order_id', order.id);
-              
-            if (itemsError) throw itemsError;
-            
-            // Get product details for each item
-            const itemsWithProductDetails = await Promise.all(
-              (itemsData || []).map(async (item) => {
-                const { data: product, error: productError } = await supabase
-                  .from('products')
-                  .select('name, image_url')
-                  .eq('id', item.product_id)
-                  .single();
-                  
-                // If product not found (might have been deleted), return item as is
-                if (productError || !product) {
-                  return {
-                    ...item,
-                    product_name: 'Product no longer available',
-                    product_image: null
-                  };
-                }
-                
-                return {
-                  ...item,
-                  product_name: product.name,
-                  product_image: product.image_url
-                };
-              })
-            );
-            
-            return {
-              ...order,
-              items: itemsWithProductDetails
-            };
-          })
-        );
-        
-        return ordersWithItems;
-      } catch (error) {
-        console.error('Error fetching orders:', error);
-        throw error;
-      }
-    },
-    enabled: !!user?.id,
-  });
-  
-  function getStatusBadge(status: string) {
-    switch (status) {
-      case 'pending':
-        return <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300">Pending</Badge>;
-      case 'processing':
-        return <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">Processing</Badge>;
-      case 'shipped':
-        return <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-300">Shipped</Badge>;
-      case 'delivered':
-        return <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">Delivered</Badge>;
-      case 'cancelled':
-        return <Badge variant="outline" className="bg-red-100 text-red-800 border-red-300">Cancelled</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
+  useEffect(() => {
+    if (user) {
+      fetchOrders();
     }
-  }
+  }, [user]);
   
-  function formatDate(dateString: string) {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  }
+  const fetchOrders = async () => {
+    if (!user?.id) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Fetch orders
+      const { data: ordersData, error: ordersError } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      
+      if (ordersError) throw ordersError;
+      
+      // Fetch order items for each order
+      const ordersWithItems = await Promise.all(
+        (ordersData || []).map(async (order) => {
+          const { data: itemsData, error: itemsError } = await supabase
+            .from('order_items')
+            .select(`
+              id,
+              product_id,
+              quantity,
+              price,
+              products:product_id (name)
+            `)
+            .eq('order_id', order.id);
+          
+          if (itemsError) throw itemsError;
+          
+          const items = (itemsData || []).map(item => ({
+            id: item.id,
+            product_id: item.product_id,
+            product_name: item.products?.name || 'Unknown Product',
+            quantity: item.quantity,
+            price: item.price,
+          }));
+          
+          return {
+            ...order,
+            items,
+          };
+        })
+      );
+      
+      setOrders(ordersWithItems);
+    } catch (err: any) {
+      console.error('Error fetching orders:', err);
+      setError(err.message || 'Failed to load orders');
+      toast({
+        title: 'Error',
+        description: 'Failed to load your orders',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
   
-  if (isLoading) {
+  const getStatusBadgeClass = (status: string) => {
+    return statusColors[status as keyof typeof statusColors] || "bg-gray-100 text-gray-800";
+  };
+  
+  const getDeliveryStatusBadgeClass = (status: string) => {
+    return deliveryStatusColors[status as keyof typeof deliveryStatusColors] || "bg-gray-100 text-gray-800";
+  };
+  
+  const formatDate = (dateString: string) => {
+    return format(new Date(dateString), 'MMM d, yyyy');
+  };
+  
+  const viewOrderDetails = (order: Order) => {
+    setSelectedOrder(order);
+  };
+  
+  const getOrderStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed':
+      case 'delivered':
+        return <CheckCircle className="h-5 w-5 text-green-500" />;
+      case 'pending':
+      case 'paid':
+      case 'processing':
+        return <Clock className="h-5 w-5 text-blue-500" />;
+      case 'shipped':
+      case 'in_transit':
+        return <Truck className="h-5 w-5 text-purple-500" />;
+      case 'canceled':
+        return <AlertCircle className="h-5 w-5 text-red-500" />;
+      default:
+        return <Package className="h-5 w-5 text-gray-500" />;
+    }
+  };
+  
+  if (loading) {
     return (
-      <CardContent className="flex justify-center items-center py-12">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-shop-purple" />
-          <p>Loading your orders...</p>
-        </div>
-      </CardContent>
+      <div className="flex justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
     );
   }
   
   if (error) {
     return (
-      <CardContent className="py-6">
-        <div className="bg-red-50 border border-red-200 rounded-md p-4 text-center">
-          <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-          <h3 className="font-medium text-red-800 mb-1">Error Loading Orders</h3>
-          <p className="text-red-600 text-sm">
-            There was a problem loading your order history. Please try again later.
-          </p>
-          <Button 
-            variant="outline" 
-            className="mt-4"
-            onClick={() => window.location.reload()}
-          >
-            Try Again
-          </Button>
-        </div>
-      </CardContent>
+      <Card className="w-full">
+        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Failed to Load Orders</h3>
+          <p className="text-gray-500 mb-4">{error}</p>
+          <Button onClick={fetchOrders}>Try Again</Button>
+        </CardContent>
+      </Card>
     );
   }
-  
-  if (!orders || orders.length === 0) {
-    return (
-      <CardContent className="py-6">
-        <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-md">
-          <ShoppingBag className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="font-medium text-gray-900 mb-1">No Orders Yet</h3>
-          <p className="text-gray-500 mb-4">
-            You haven't placed any orders yet.
-          </p>
-          <Button onClick={() => window.location.href = '/'}>
-            Start Shopping
-          </Button>
-        </div>
-      </CardContent>
-    );
-  }
-  
+
   return (
-    <CardContent className="pt-6">
-      <div className="space-y-8">
-        {orders.map((order) => (
-          <div key={order.id} className="border rounded-lg overflow-hidden">
-            <div className="bg-gray-50 px-4 py-3 border-b flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">Order #:</span>
-                  <span className="font-medium">{order.id.substring(0, 8)}...</span>
-                </div>
-                <div className="text-sm text-gray-500">
-                  Placed on {formatDate(order.created_at)}
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm">Status: {getStatusBadge(order.status)}</span>
-                <span className="font-medium">${order.total.toFixed(2)}</span>
-              </div>
-            </div>
-            
-            <div className="p-4">
-              {order.items && order.items.length > 0 ? (
-                <ul className="divide-y">
-                  {order.items.map((item) => (
-                    <li key={item.id} className="py-4 flex gap-4">
-                      <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-gray-200">
-                        {item.product_image ? (
-                          <img
-                            src={item.product_image}
-                            alt={item.product_name}
-                            className="h-full w-full object-cover object-center"
-                          />
-                        ) : (
-                          <div className="h-full w-full bg-gray-100 flex items-center justify-center">
-                            <Package className="h-8 w-8 text-gray-400" />
-                          </div>
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold">Your Orders</h2>
+      
+      {orders.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <Package className="h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No Orders Yet</h3>
+            <p className="text-gray-500 mb-4">You haven't placed any orders yet.</p>
+            <Button asChild>
+              <a href="/">Start Shopping</a>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Order ID</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+                <TableHead className="w-[100px]">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {orders.map((order) => (
+                <TableRow key={order.id}>
+                  <TableCell className="font-medium">{order.id.substring(0, 8)}</TableCell>
+                  <TableCell>{formatDate(order.created_at)}</TableCell>
+                  <TableCell>
+                    <div className="flex gap-2">
+                      <Badge className={getStatusBadgeClass(order.status)}>
+                        {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                      </Badge>
+                      {order.delivery_status && order.delivery_status !== 'pending' && (
+                        <Badge className={getDeliveryStatusBadgeClass(order.delivery_status)}>
+                          {order.delivery_status.charAt(0).toUpperCase() + order.delivery_status.slice(1)}
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">${order.total.toFixed(2)}</TableCell>
+                  <TableCell>
+                    <Sheet>
+                      <SheetTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => viewOrderDetails(order)}
+                        >
+                          <EyeIcon className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                      </SheetTrigger>
+                      <SheetContent>
+                        {selectedOrder && (
+                          <>
+                            <SheetHeader>
+                              <SheetTitle>Order #{selectedOrder.id.substring(0, 8)}</SheetTitle>
+                              <SheetDescription>
+                                Placed on {formatDate(selectedOrder.created_at)}
+                              </SheetDescription>
+                            </SheetHeader>
+                            
+                            <div className="py-4">
+                              <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center">
+                                  {getOrderStatusIcon(selectedOrder.status)}
+                                  <span className="ml-2 font-medium">
+                                    Status: {selectedOrder.status.charAt(0).toUpperCase() + selectedOrder.status.slice(1)}
+                                  </span>
+                                </div>
+                                <Badge className={getStatusBadgeClass(selectedOrder.status)}>
+                                  {selectedOrder.status.charAt(0).toUpperCase() + selectedOrder.status.slice(1)}
+                                </Badge>
+                              </div>
+                              
+                              {selectedOrder.tracking_number && (
+                                <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-md">
+                                  <p className="text-sm font-medium">Tracking Number:</p>
+                                  <p className="text-sm">{selectedOrder.tracking_number}</p>
+                                </div>
+                              )}
+                              
+                              <Accordion type="single" collapsible className="mb-4">
+                                <AccordionItem value="items">
+                                  <AccordionTrigger>Order Items</AccordionTrigger>
+                                  <AccordionContent>
+                                    <div className="space-y-2">
+                                      {selectedOrder.items.map((item) => (
+                                        <div key={item.id} className="flex justify-between items-center border-b pb-2">
+                                          <div>
+                                            <p className="font-medium">{item.product_name}</p>
+                                            <p className="text-sm text-gray-500">
+                                              {item.quantity} × ${item.price.toFixed(2)}
+                                            </p>
+                                          </div>
+                                          <p className="font-medium">
+                                            ${(item.price * item.quantity).toFixed(2)}
+                                          </p>
+                                        </div>
+                                      ))}
+                                      <div className="flex justify-between items-center pt-2">
+                                        <p className="font-semibold">Total:</p>
+                                        <p className="font-semibold">${selectedOrder.total.toFixed(2)}</p>
+                                      </div>
+                                    </div>
+                                  </AccordionContent>
+                                </AccordionItem>
+                                
+                                <AccordionItem value="shipping">
+                                  <AccordionTrigger>Shipping Address</AccordionTrigger>
+                                  <AccordionContent>
+                                    <div className="space-y-1">
+                                      <p>{selectedOrder.shipping_address}</p>
+                                      <p>
+                                        {selectedOrder.shipping_city}, {selectedOrder.shipping_state} {selectedOrder.shipping_postal_code}
+                                      </p>
+                                    </div>
+                                  </AccordionContent>
+                                </AccordionItem>
+                              </Accordion>
+                              
+                              <div className="border-t pt-4">
+                                <p className="font-semibold text-lg">Order Summary</p>
+                                <div className="flex justify-between mt-2">
+                                  <p>Subtotal:</p>
+                                  <p>${selectedOrder.total.toFixed(2)}</p>
+                                </div>
+                                <div className="flex justify-between mt-2">
+                                  <p>Shipping:</p>
+                                  <p>Free</p>
+                                </div>
+                                <div className="flex justify-between mt-2 font-semibold">
+                                  <p>Total:</p>
+                                  <p>${selectedOrder.total.toFixed(2)}</p>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <SheetFooter>
+                              <SheetClose asChild>
+                                <Button variant="outline" className="w-full">Close</Button>
+                              </SheetClose>
+                            </SheetFooter>
+                          </>
                         )}
-                      </div>
-                      <div className="flex flex-1 flex-col">
-                        <div>
-                          <div className="flex justify-between">
-                            <h3 className="font-medium text-gray-900">
-                              {item.product_name || 'Unknown Product'}
-                            </h3>
-                            <p className="ml-4">${item.price.toFixed(2)}</p>
-                          </div>
-                          <p className="mt-1 text-sm text-gray-500">Quantity: {item.quantity}</p>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="text-center py-4 text-gray-500">
-                  No items found for this order.
-                </div>
-              )}
-            </div>
-            
-            {order.tracking_number && (
-              <div className="bg-gray-50 px-4 py-3 border-t">
-                <div className="text-sm">
-                  <span className="font-medium">Tracking Number:</span>{' '}
-                  {order.tracking_number}
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </CardContent>
+                      </SheetContent>
+                    </Sheet>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+    </div>
   );
 }

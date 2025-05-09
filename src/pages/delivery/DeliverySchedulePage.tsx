@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { format, addDays, startOfWeek, isSameDay } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import {
   AlertCircle,
   ChevronLeft,
@@ -15,27 +16,12 @@ import {
   Clock,
   Save,
   Info,
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-
-// Define the data structure for availability
-interface TimeSlot {
-  id: string;
-  day: number;
-  startTime: string;
-  endTime: string;
-  available: boolean;
-}
-
-// Define the data structure for delivery slots
-interface DeliverySlot {
-  id: string;
-  date: Date;
-  time: string;
-  orderId: string | null;
-  status: "available" | "booked" | "completed" | "unavailable";
-}
+import { TimeSlot, DeliverySlot, fetchWeeklySchedule, saveWeeklySchedule, fetchDeliverySlots } from "@/utils/deliveryUtils";
 
 export default function DeliverySchedulePage() {
   const { user } = useAuth();
@@ -45,64 +31,46 @@ export default function DeliverySchedulePage() {
   const [selectedDate, setSelectedDate] = useState<Date>(today);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDataLoading, setIsDataLoading] = useState(true);
   
-  // Default weekly schedule
-  const [weeklySchedule, setWeeklySchedule] = useState<TimeSlot[]>([
-    { id: '1-1', day: 1, startTime: '09:00', endTime: '17:00', available: true },
-    { id: '1-2', day: 1, startTime: '18:00', endTime: '22:00', available: false },
-    { id: '2-1', day: 2, startTime: '09:00', endTime: '17:00', available: true },
-    { id: '2-2', day: 2, startTime: '18:00', endTime: '22:00', available: false },
-    { id: '3-1', day: 3, startTime: '09:00', endTime: '17:00', available: true },
-    { id: '3-2', day: 3, startTime: '18:00', endTime: '22:00', available: false },
-    { id: '4-1', day: 4, startTime: '09:00', endTime: '17:00', available: true },
-    { id: '4-2', day: 4, startTime: '18:00', endTime: '22:00', available: false },
-    { id: '5-1', day: 5, startTime: '09:00', endTime: '17:00', available: true },
-    { id: '5-2', day: 5, startTime: '18:00', endTime: '22:00', available: true },
-    { id: '6-1', day: 6, startTime: '10:00', endTime: '18:00', available: true },
-    { id: '7-1', day: 0, startTime: '10:00', endTime: '16:00', available: false },
-  ]);
+  // Weekly schedule state
+  const [weeklySchedule, setWeeklySchedule] = useState<TimeSlot[]>([]);
   
-  // Mock delivery slots - in a real app this would come from your API
-  const [deliverySlots, setDeliverySlots] = useState<DeliverySlot[]>(() => {
-    // Generate mock delivery slots for the next 14 days
-    const slots: DeliverySlot[] = [];
-    
-    for (let i = 0; i < 14; i++) {
-      const date = addDays(today, i);
-      const isAvailable = date.getDay() !== 0; // No deliveries on Sunday
+  // Delivery slots state
+  const [deliverySlots, setDeliverySlots] = useState<DeliverySlot[]>([]);
+  
+  // Fetch weekly schedule and delivery slots on component mount
+  useEffect(() => {
+    const loadData = async () => {
+      if (!user?.id) return;
       
-      // Morning slot
-      slots.push({
-        id: `slot-${i}-1`,
-        date,
-        time: '09:00 - 12:00',
-        orderId: Math.random() > 0.7 ? `ord-${Math.floor(Math.random() * 10000)}` : null,
-        status: isAvailable ? (Math.random() > 0.7 ? 'booked' : 'available') : 'unavailable'
-      });
-      
-      // Afternoon slot
-      slots.push({
-        id: `slot-${i}-2`,
-        date,
-        time: '13:00 - 17:00',
-        orderId: Math.random() > 0.7 ? `ord-${Math.floor(Math.random() * 10000)}` : null,
-        status: isAvailable ? (Math.random() > 0.6 ? 'booked' : 'available') : 'unavailable'
-      });
-      
-      // Evening slot - only on Friday and Saturday
-      if (date.getDay() === 5 || date.getDay() === 6) {
-        slots.push({
-          id: `slot-${i}-3`,
-          date,
-          time: '18:00 - 21:00',
-          orderId: Math.random() > 0.8 ? `ord-${Math.floor(Math.random() * 10000)}` : null,
-          status: Math.random() > 0.4 ? 'booked' : 'available'
+      setIsDataLoading(true);
+      try {
+        // Fetch weekly schedule
+        const schedule = await fetchWeeklySchedule(user.id);
+        setWeeklySchedule(schedule);
+        
+        // Fetch delivery slots for the current week
+        const slots = await fetchDeliverySlots(
+          user.id,
+          currentWeekStart,
+          addDays(currentWeekStart, 13) // Two weeks of data
+        );
+        setDeliverySlots(slots);
+      } catch (error) {
+        console.error("Error loading data:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load schedule data. Please try again.",
+          variant: "destructive",
         });
+      } finally {
+        setIsDataLoading(false);
       }
-    }
+    };
     
-    return slots;
-  });
+    loadData();
+  }, [user?.id, currentWeekStart, toast]);
   
   // Toggle availability for a time slot
   const toggleAvailability = (slotId: string) => {
@@ -129,17 +97,68 @@ export default function DeliverySchedulePage() {
   };
   
   // Save the weekly schedule
-  const saveSchedule = () => {
+  const saveSchedule = async () => {
+    if (!user?.id) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to save your schedule.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setIsSaving(true);
     
-    // In a real app, this would be an API call
-    setTimeout(() => {
+    try {
+      const success = await saveWeeklySchedule(user.id, weeklySchedule);
+      
+      if (success) {
+        toast({
+          title: "Schedule Saved",
+          description: "Your availability schedule has been updated successfully.",
+        });
+      } else {
+        throw new Error("Failed to save schedule");
+      }
+    } catch (error) {
+      console.error("Error saving schedule:", error);
       toast({
-        title: "Schedule Saved",
-        description: "Your availability schedule has been updated successfully.",
+        title: "Save Failed",
+        description: "There was a problem saving your schedule. Please try again.",
+        variant: "destructive",
       });
+    } finally {
       setIsSaving(false);
-    }, 1000);
+    }
+  };
+  
+  // Refresh the delivery slots
+  const refreshDeliverySlots = async () => {
+    if (!user?.id) return;
+    
+    setIsLoading(true);
+    try {
+      const slots = await fetchDeliverySlots(
+        user.id,
+        currentWeekStart,
+        addDays(currentWeekStart, 13)
+      );
+      setDeliverySlots(slots);
+      
+      toast({
+        title: "Data Refreshed",
+        description: "Your delivery schedule has been updated.",
+      });
+    } catch (error) {
+      console.error("Error refreshing data:", error);
+      toast({
+        title: "Refresh Failed",
+        description: "Failed to refresh delivery data. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   // Get delivery slots for a specific date
@@ -156,6 +175,19 @@ export default function DeliverySchedulePage() {
   const formatDayName = (date: Date) => {
     return format(date, 'EEE');
   };
+
+  // Show loading state if data is still loading
+  if (isDataLoading && !weeklySchedule.length) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex flex-col items-center justify-center my-20">
+          <Loader2 className="h-12 w-12 animate-spin text-shop-purple mb-4" />
+          <h2 className="text-xl font-semibold">Loading Schedule</h2>
+          <p className="text-gray-500 mt-2">Please wait while we load your delivery schedule...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -252,7 +284,7 @@ export default function DeliverySchedulePage() {
                 >
                   {isSaving ? (
                     <>
-                      <Clock className="mr-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Saving...
                     </>
                   ) : (
@@ -273,9 +305,19 @@ export default function DeliverySchedulePage() {
             <CardHeader className="pb-3">
               <div className="flex justify-between items-center">
                 <CardTitle>Daily Schedule</CardTitle>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                  <CalendarIcon className="h-4 w-4" />
-                  <span className="sr-only">Calendar</span>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-8 w-8 p-0"
+                  onClick={refreshDeliverySlots}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  <span className="sr-only">Refresh</span>
                 </Button>
               </div>
               <p className="text-sm text-muted-foreground">

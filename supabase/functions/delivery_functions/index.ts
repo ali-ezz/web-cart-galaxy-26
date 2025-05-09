@@ -1,430 +1,407 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.23.0";
+// Follow Deno Deploy's ES module conventions
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.1';
+import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
+// Define the allowed CORS headers
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 serve(async (req) => {
-  // Handle CORS preflight request
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Create a Supabase client with the admin key
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    // Create a Supabase client with the Auth context
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') as string;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') as string;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get authorization header from the request
-    const authHeader = req.headers.get("Authorization")?.split(" ")[1];
+    // Get the authorization header from the request
+    const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: "No authorization header" }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 401,
-        }
+        JSON.stringify({ error: 'No authorization header provided' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       );
     }
 
-    // Verify the user's JWT
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authHeader);
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized", details: authError?.message || "User not found" }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 401,
-        }
-      );
-    }
-
-    // Check if the user has a delivery role
-    const { data: roleData, error: roleError } = await supabaseClient
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .single();
-      
-    if (roleError && roleError.code !== 'PGRST116') {
-      return new Response(
-        JSON.stringify({ error: "Error checking user role", details: roleError.message }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 500,
-        }
-      );
-    }
-
-    // Clone the request to avoid body already consumed error
-    const requestClone = req.clone();
-    // Parse the request body data
-    const requestData = await requestClone.json();
-    const { action, ...params } = requestData;
+    // Get the JWT token from the authorization header
+    const token = authHeader.replace('Bearer ', '');
     
-    if (action !== 'get_available_orders' && (!roleData || roleData.role !== 'delivery')) {
+    // Verify the JWT token and get the user
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    
+    if (userError || !user) {
       return new Response(
-        JSON.stringify({ error: "Access denied. Delivery role required." }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 403,
-        }
+        JSON.stringify({ error: 'Invalid JWT token or user not found' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       );
     }
 
-    // Handle the request
-    let result;
-    
+    // Parse the request body
+    const { action, ...params } = await req.json();
+
+    // Handle different actions
     switch (action) {
-      case "get_available_orders":
-        // Get orders that are paid but not assigned to a delivery person
-        console.log("Fetching available orders");
-        
-        const { data: availableOrders, error: availableError } = await supabaseClient
-          .from('orders')
-          .select(`
-            *,
-            delivery_assignments(order_id)
-          `)
-          .eq('status', 'paid')
-          .eq('delivery_status', 'pending')
-          .is('delivery_assignments.order_id', null);
-        
-        if (availableError) {
-          console.error("Error fetching available orders:", availableError);
-          throw availableError;
-        }
-        
-        console.log(`Found ${availableOrders?.length || 0} available orders`);
-        result = { orders: availableOrders || [] };
-        break;
-
-      case "accept_delivery_order":
-        // Delivery person accepts an order
-        const { order_id } = params;
-        const deliveryPersonId = user.id;
-        
-        if (!order_id) {
-          throw new Error("Missing order_id parameter");
-        }
-        
-        // Check if the order is already assigned
-        const { data: existingAssignment, error: checkError } = await supabaseClient
-          .from('delivery_assignments')
-          .select('id')
-          .eq('order_id', order_id)
-          .maybeSingle();
-          
-        if (checkError) {
-          console.error("Error checking assignment:", checkError);
-          throw checkError;
-        }
-        
-        if (existingAssignment) {
-          throw new Error("This order is already assigned to a delivery person");
-        }
-        
-        // Create delivery assignment
-        const { data: assignment, error: assignmentError } = await supabaseClient
-          .from('delivery_assignments')
-          .insert({
-            order_id,
-            delivery_person_id: deliveryPersonId,
-            status: 'assigned',
-            assigned_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-          
-        if (assignmentError) {
-          console.error("Error creating assignment:", assignmentError);
-          throw assignmentError;
-        }
-        
-        // Update order status
-        const { error: orderUpdateError } = await supabaseClient
-          .from('orders')
-          .update({ delivery_status: 'assigned' })
-          .eq('id', order_id);
-          
-        if (orderUpdateError) {
-          console.error("Error updating order:", orderUpdateError);
-          throw orderUpdateError;
-        }
-        
-        result = { success: true, assignment };
-        break;
-
-      case "get_delivery_assignments":
-        // Get assignments for a delivery person
-        const deliveryPersonIdParam = user.id; // Use user ID from authenticated token
-        
-        const { data: assignments, error: assignmentsError } = await supabaseClient
-          .from('delivery_assignments')
-          .select(`
-            *,
-            order:orders(*)
-          `)
-          .eq('delivery_person_id', deliveryPersonIdParam)
-          .order('assigned_at', { ascending: false });
-        
-        if (assignmentsError) {
-          console.error("Error fetching assignments:", assignmentsError);
-          throw assignmentsError;
-        }
-        
-        result = { assignments: assignments || [] };
-        break;
-
-      case "update_delivery_status":
-        // Update delivery status
-        const { assignment_id, status, notes } = params;
-        
-        if (!assignment_id || !status) {
-          throw new Error("Missing required parameters");
-        }
-        
-        // Verify assignment belongs to this delivery person
-        const { data: assignmentCheck, error: assignmentCheckError } = await supabaseClient
-          .from('delivery_assignments')
-          .select('order_id')
-          .eq('id', assignment_id)
-          .eq('delivery_person_id', user.id)
-          .single();
-          
-        if (assignmentCheckError) {
-          console.error("Error verifying assignment:", assignmentCheckError);
-          throw new Error("Assignment not found or doesn't belong to you");
-        }
-        
-        // Update assignment
-        const updateData: any = { status };
-        if (notes) updateData.notes = notes;
-        if (status === 'delivered') updateData.delivered_at = new Date().toISOString();
-        
-        const { data: updatedAssignment, error: updateError } = await supabaseClient
-          .from('delivery_assignments')
-          .update(updateData)
-          .eq('id', assignment_id)
-          .select()
-          .single();
-          
-        if (updateError) {
-          console.error("Error updating assignment:", updateError);
-          throw updateError;
-        }
-        
-        // Also update order status if delivered
-        if (status === 'delivered') {
-          const { error: orderUpdateErr } = await supabaseClient
-            .from('orders')
-            .update({ delivery_status: 'delivered' })
-            .eq('id', assignmentCheck.order_id);
-            
-          if (orderUpdateErr) {
-            console.error("Error updating order:", orderUpdateErr);
-            throw orderUpdateErr;
-          }
-        }
-        
-        result = { success: true, assignment: updatedAssignment };
-        break;
-
-      case "get_delivery_stats":
-        // Get stats for a delivery person
-        const statsPersonId = user.id; // Use authenticated user ID
-        
-        console.log("Getting delivery stats for id:", statsPersonId);
-        
-        // Get completed deliveries count
-        const { count: deliveredCount, error: deliveredError } = await supabaseClient
-          .from('delivery_assignments')
-          .select('id', { count: 'exact', head: true })
-          .eq('delivery_person_id', statsPersonId)
-          .eq('status', 'delivered');
-          
-        if (deliveredError) {
-          console.error("Error counting delivered:", deliveredError);
-          throw deliveredError;
-        }
-        
-        // Get in progress deliveries count
-        const { count: assignedCount, error: assignedError } = await supabaseClient
-          .from('delivery_assignments')
-          .select('id', { count: 'exact', head: true })
-          .eq('delivery_person_id', statsPersonId)
-          .eq('status', 'assigned');
-          
-        if (assignedError) {
-          console.error("Error counting assigned:", assignedError);
-          throw assignedError;
-        }
-        
-        // Get recent deliveries
-        const { data: recentDeliveries, error: recentError } = await supabaseClient
-          .from('delivery_assignments')
-          .select(`
-            *,
-            order:orders(*)
-          `)
-          .eq('delivery_person_id', statsPersonId)
-          .eq('status', 'delivered')
-          .order('delivered_at', { ascending: false })
-          .limit(5);
-          
-        if (recentError) {
-          console.error("Error fetching recent:", recentError);
-          throw recentError;
-        }
-        
-        result = {
-          stats: {
-            total_delivered: deliveredCount || 0,
-            in_progress: assignedCount || 0,
-            recent_deliveries: recentDeliveries || []
-          }
-        };
-        break;
-
-      case "get_earnings":
-        // Get earnings data for a delivery person
-        const earningsUserId = user.id;
-
-        // In a real implementation, you would have a table for earnings
-        // For this implementation, we'll calculate earnings based on completed deliveries
-        const { data: completedDeliveries, error: completedError } = await supabaseClient
-          .from('delivery_assignments')
-          .select(`
-            id,
-            delivered_at,
-            order_id,
-            order:orders(total)
-          `)
-          .eq('delivery_person_id', earningsUserId)
-          .eq('status', 'delivered')
-          .order('delivered_at', { ascending: false });
-
-        if (completedError) {
-          console.error("Error fetching completed deliveries:", completedError);
-          throw completedError;
-        }
-
-        // Calculate earnings (in a real app, you would have a proper earnings system)
-        const earningsData = completedDeliveries?.map((delivery: any) => ({
-          id: delivery.id,
-          date: delivery.delivered_at,
-          order_id: delivery.order_id,
-          // Assume delivery person gets 10% of the order value
-          amount: delivery.order?.total ? Number(delivery.order.total) * 0.1 : 0,
-          status: 'paid'
-        })) || [];
-
-        result = { earnings: earningsData };
-        break;
-
-      case "get_schedule":
-        // Get delivery schedule for a delivery person
-        const scheduleUserId = user.id;
-
-        // In a real app, you would have a table for schedules
-        // Here we'll return a mock schedule
-        const today = new Date();
-        const weekSchedule = [
-          { day: 'Monday', slots: [{ start: '09:00', end: '17:00', available: true }] },
-          { day: 'Tuesday', slots: [{ start: '09:00', end: '17:00', available: true }] },
-          { day: 'Wednesday', slots: [{ start: '09:00', end: '17:00', available: true }] },
-          { day: 'Thursday', slots: [{ start: '09:00', end: '17:00', available: true }] },
-          { day: 'Friday', slots: [
-            { start: '09:00', end: '17:00', available: true },
-            { start: '18:00', end: '22:00', available: true }
-          ]},
-          { day: 'Saturday', slots: [{ start: '10:00', end: '18:00', available: true }] },
-          { day: 'Sunday', slots: [{ start: '10:00', end: '16:00', available: false }] },
-        ];
-
-        result = { schedule: weekSchedule };
-        break;
-
-      case "update_schedule":
-        // Update delivery schedule
-        const updateScheduleUserId = user.id;
-        const { schedule } = params;
-
-        if (!schedule) {
-          throw new Error("Missing schedule parameter");
-        }
-
-        // In a real app, you would update the schedule in the database
-        // For this demo, we'll just return success
-
-        result = { success: true, message: "Schedule updated successfully" };
-        break;
-
-      case "get_delivery_routes":
-        // Get optimized delivery routes for assigned orders
-        const routesUserId = user.id;
-
-        const { data: assignedOrders, error: assignedOrdersError } = await supabaseClient
-          .from('delivery_assignments')
-          .select(`
-            id,
-            order_id,
-            order:orders(shipping_address, shipping_city, shipping_state, shipping_postal_code)
-          `)
-          .eq('delivery_person_id', routesUserId)
-          .eq('status', 'assigned');
-
-        if (assignedOrdersError) {
-          console.error("Error fetching assigned orders:", assignedOrdersError);
-          throw assignedOrdersError;
-        }
-
-        // In a real app, you would use a routing algorithm or service
-        // For this demo, we'll just return the assignments with sequence numbers
-        const routes = assignedOrders?.map((assignment: any, index: number) => ({
-          id: assignment.id,
-          order_id: assignment.order_id,
-          address: assignment.order?.shipping_address,
-          city: assignment.order?.shipping_city,
-          state: assignment.order?.shipping_state,
-          postal_code: assignment.order?.shipping_postal_code,
-          sequence: index + 1
-        })) || [];
-
-        result = { routes };
-        break;
-
+      case 'get_delivery_stats':
+        return await getDeliveryStats(supabase, user.id, corsHeaders);
+      
+      case 'get_available_orders':
+        return await getAvailableOrders(supabase, user.id, corsHeaders);
+      
+      case 'accept_order':
+        return await acceptOrder(supabase, user.id, params.orderId, corsHeaders);
+      
+      case 'complete_delivery':
+        return await completeDelivery(supabase, user.id, params.orderId, corsHeaders);
+      
+      case 'save_schedule':
+        return await saveSchedule(supabase, user.id, params.schedule, corsHeaders);
+      
+      case 'get_schedule':
+        return await getSchedule(supabase, user.id, corsHeaders);
+      
       default:
-        throw new Error(`Unknown action: ${action}`);
+        return new Response(
+          JSON.stringify({ error: `Unknown action: ${action}` }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
     }
-
-    return new Response(
-      JSON.stringify(result),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      }
-    );
   } catch (error) {
-    console.error("Error processing delivery function:", error);
+    // Handle any errors
+    console.error(`Error processing request:`, error);
+    
     return new Response(
-      JSON.stringify({ error: error.message || "Unknown error", stack: error.stack }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 400,
-      }
+      JSON.stringify({ error: error.message || 'Unknown error occurred' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }
 });
+
+// Get delivery stats for a delivery person
+async function getDeliveryStats(supabase, userId, corsHeaders) {
+  console.log("Getting delivery stats for id:", userId);
+  
+  try {
+    // Get completed deliveries count
+    const { data: deliveredData, error: deliveredError } = await supabase
+      .from('delivery_assignments')
+      .select('id')
+      .eq('delivery_person_id', userId)
+      .eq('status', 'delivered');
+    
+    if (deliveredError) throw deliveredError;
+    
+    // Get in-progress deliveries count
+    const { data: inProgressData, error: inProgressError } = await supabase
+      .from('delivery_assignments')
+      .select('id')
+      .eq('delivery_person_id', userId)
+      .eq('status', 'assigned');
+    
+    if (inProgressError) throw inProgressError;
+    
+    // Get recent deliveries (limited to 5)
+    const { data: recentDeliveries, error: recentError } = await supabase
+      .from('delivery_assignments')
+      .select('id, order_id, delivered_at, status')
+      .eq('delivery_person_id', userId)
+      .eq('status', 'delivered')
+      .order('delivered_at', { ascending: false })
+      .limit(5);
+    
+    if (recentError) throw recentError;
+    
+    // Return the stats
+    const stats = {
+      total_delivered: deliveredData?.length || 0,
+      in_progress: inProgressData?.length || 0,
+      recent_deliveries: recentDeliveries || [],
+    };
+    
+    return new Response(
+      JSON.stringify({ stats }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error("Error getting delivery stats:", error);
+    
+    return new Response(
+      JSON.stringify({ error: error.message || 'Failed to get delivery stats' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
+  }
+}
+
+// Get available orders for delivery
+async function getAvailableOrders(supabase, userId, corsHeaders) {
+  console.log("Fetching available orders");
+  
+  try {
+    // Get orders that are paid and don't have delivery assignments yet
+    const { data: availableOrders, error: ordersError } = await supabase
+      .from('orders')
+      .select(`
+        id,
+        created_at,
+        total,
+        shipping_address,
+        shipping_city,
+        shipping_state,
+        shipping_postal_code,
+        status,
+        profiles:user_id (
+          first_name,
+          last_name,
+          phone
+        )
+      `)
+      .eq('status', 'paid')
+      .eq('delivery_status', 'pending')
+      .not('id', 'in', supabase.from('delivery_assignments').select('order_id'));
+    
+    if (ordersError) throw ordersError;
+    
+    console.log(`Found ${availableOrders?.length || 0} available orders`);
+    
+    return new Response(
+      JSON.stringify({ orders: availableOrders || [] }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error("Error getting available orders:", error);
+    
+    return new Response(
+      JSON.stringify({ error: error.message || 'Failed to get available orders' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
+  }
+}
+
+// Accept an order for delivery
+async function acceptOrder(supabase, userId, orderId, corsHeaders) {
+  if (!orderId) {
+    return new Response(
+      JSON.stringify({ error: 'Order ID is required' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+    );
+  }
+  
+  try {
+    // Check if the order exists and is available
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, status, delivery_status')
+      .eq('id', orderId)
+      .eq('status', 'paid')
+      .eq('delivery_status', 'pending')
+      .single();
+    
+    if (orderError || !order) {
+      return new Response(
+        JSON.stringify({ error: 'Order not found or not available for delivery' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+      );
+    }
+    
+    // Check if the order is already assigned
+    const { data: existingAssignment, error: assignmentError } = await supabase
+      .from('delivery_assignments')
+      .select('id')
+      .eq('order_id', orderId)
+      .maybeSingle();
+    
+    if (assignmentError) throw assignmentError;
+    
+    if (existingAssignment) {
+      return new Response(
+        JSON.stringify({ error: 'Order is already assigned to a delivery person' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+    
+    // Create a new delivery assignment
+    const { data: newAssignment, error: createError } = await supabase
+      .from('delivery_assignments')
+      .insert({
+        delivery_person_id: userId,
+        order_id: orderId,
+        status: 'assigned',
+        assigned_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+    
+    if (createError) throw createError;
+    
+    // Update the order's delivery status
+    const { error: updateError } = await supabase
+      .from('orders')
+      .update({ delivery_status: 'assigned' })
+      .eq('id', orderId);
+    
+    if (updateError) throw updateError;
+    
+    return new Response(
+      JSON.stringify({ success: true, assignment: newAssignment }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error("Error accepting order:", error);
+    
+    return new Response(
+      JSON.stringify({ error: error.message || 'Failed to accept order' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
+  }
+}
+
+// Complete a delivery
+async function completeDelivery(supabase, userId, orderId, corsHeaders) {
+  if (!orderId) {
+    return new Response(
+      JSON.stringify({ error: 'Order ID is required' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+    );
+  }
+  
+  try {
+    // Check if the assignment exists and belongs to this delivery person
+    const { data: assignment, error: assignmentError } = await supabase
+      .from('delivery_assignments')
+      .select('id, status')
+      .eq('order_id', orderId)
+      .eq('delivery_person_id', userId)
+      .single();
+    
+    if (assignmentError || !assignment) {
+      return new Response(
+        JSON.stringify({ error: 'Assignment not found or does not belong to you' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+      );
+    }
+    
+    if (assignment.status === 'delivered') {
+      return new Response(
+        JSON.stringify({ error: 'Delivery is already marked as completed' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+    
+    // Update the delivery assignment
+    const { error: updateAssignmentError } = await supabase
+      .from('delivery_assignments')
+      .update({
+        status: 'delivered',
+        delivered_at: new Date().toISOString(),
+      })
+      .eq('id', assignment.id);
+    
+    if (updateAssignmentError) throw updateAssignmentError;
+    
+    // Update the order's delivery status
+    const { error: updateOrderError } = await supabase
+      .from('orders')
+      .update({ delivery_status: 'delivered', status: 'completed' })
+      .eq('id', orderId);
+    
+    if (updateOrderError) throw updateOrderError;
+    
+    return new Response(
+      JSON.stringify({ success: true }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error("Error completing delivery:", error);
+    
+    return new Response(
+      JSON.stringify({ error: error.message || 'Failed to complete delivery' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
+  }
+}
+
+// Save a delivery schedule
+async function saveSchedule(supabase, userId, schedule, corsHeaders) {
+  if (!schedule || !Array.isArray(schedule)) {
+    return new Response(
+      JSON.stringify({ error: 'Valid schedule array is required' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+    );
+  }
+  
+  try {
+    // Delete existing schedule entries
+    const { error: deleteError } = await supabase
+      .from('delivery_schedules')
+      .delete()
+      .eq('delivery_person_id', userId);
+    
+    if (deleteError) throw deleteError;
+    
+    // Insert new schedule entries
+    const scheduleData = schedule.map(slot => ({
+      delivery_person_id: userId,
+      day_of_week: slot.day,
+      start_time: slot.startTime,
+      end_time: slot.endTime,
+      available: slot.available
+    }));
+    
+    const { error: insertError } = await supabase
+      .from('delivery_schedules')
+      .insert(scheduleData);
+    
+    if (insertError) throw insertError;
+    
+    return new Response(
+      JSON.stringify({ success: true }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error("Error saving schedule:", error);
+    
+    return new Response(
+      JSON.stringify({ error: error.message || 'Failed to save schedule' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
+  }
+}
+
+// Get a delivery person's schedule
+async function getSchedule(supabase, userId, corsHeaders) {
+  try {
+    const { data, error } = await supabase
+      .from('delivery_schedules')
+      .select('*')
+      .eq('delivery_person_id', userId);
+    
+    if (error) throw error;
+    
+    // Convert to the format expected by the frontend
+    const schedule = (data || []).map(item => ({
+      id: item.id,
+      day: item.day_of_week,
+      startTime: item.start_time,
+      endTime: item.end_time,
+      available: item.available
+    }));
+    
+    return new Response(
+      JSON.stringify({ schedule }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error("Error getting schedule:", error);
+    
+    return new Response(
+      JSON.stringify({ error: error.message || 'Failed to get schedule' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
+  }
+}
