@@ -54,45 +54,44 @@ export default function ProductPage() {
         
         if (!data) return null;
         
-        // Fetch reviews with user profiles
+        // Fetch reviews separately
         const { data: reviewsData, error: reviewsError } = await supabase
           .from('reviews')
-          .select(`
-            id,
-            rating,
-            comment,
-            created_at,
-            user_id,
-            profiles:user_id (
-              first_name,
-              last_name,
-              avatar_url
-            )
-          `)
+          .select('id, rating, comment, created_at, user_id')
           .eq('product_id', id)
           .order('created_at', { ascending: false })
           .limit(10);
           
         if (reviewsError) throw reviewsError;
         
-        // Process reviews to format user names - with null checks
-        const processedReviews = reviewsData?.map(review => {
-          // Handle potential null/undefined profiles
-          const firstName = review.profiles?.first_name || '';
-          const lastName = review.profiles?.last_name || '';
-          const avatarUrl = review.profiles?.avatar_url || null;
+        // For each review, fetch the user profile
+        let processedReviews: Review[] = [];
+        
+        if (reviewsData && reviewsData.length > 0) {
+          // Create an array of promises to fetch user profiles
+          const profilePromises = reviewsData.map(async (review) => {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('first_name, last_name, avatar_url')
+              .eq('id', review.user_id)
+              .single();
+              
+            // Return a processed review with user info
+            return {
+              id: review.id,
+              rating: review.rating,
+              comment: review.comment,
+              created_at: review.created_at,
+              user: {
+                name: profileData ? `${profileData.first_name || ''} ${profileData.last_name || ''}`.trim() || 'Anonymous' : 'Anonymous',
+                avatar_url: profileData?.avatar_url || null
+              }
+            };
+          });
           
-          return {
-            id: review.id,
-            rating: review.rating,
-            comment: review.comment,
-            created_at: review.created_at,
-            user: {
-              name: firstName && lastName ? `${firstName} ${lastName}`.trim() : 'Anonymous',
-              avatar_url: avatarUrl
-            }
-          };
-        });
+          // Wait for all profile fetches to complete
+          processedReviews = await Promise.all(profilePromises);
+        }
         
         return {
           ...data,
