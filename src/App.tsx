@@ -45,9 +45,17 @@ function App() {
               <Header />
               <main className="flex-grow">
                 <Routes>
+                  {/* Public routes */}
                   <Route path="/" element={<Index />} />
                   <Route path="/home" element={<Index />} />
                   <Route path="/product/:id" element={<ProductPage />} />
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/register" element={<RegisterPage />} />
+                  <Route path="/auth-confirmation" element={<AuthConfirmationPage />} />
+                  <Route path="/cart" element={<CartPage />} />
+                  <Route path="/welcome" element={<WelcomePage />} />
+                  
+                  {/* Role-specific routes */}
                   <Route path="/admin" element={<AdminDashboardPage />} />
                   <Route path="/admin/products" element={<AdminProductsPage />} />
                   <Route path="/seller" element={<SellerDashboardPage />} />
@@ -58,11 +66,7 @@ function App() {
                   <Route path="/delivery/earnings" element={<DeliveryEarningsPage />} />
                   <Route path="/delivery/available" element={<AvailableOrdersPage />} />
                   <Route path="/account" element={<AccountPage />} />
-                  <Route path="/cart" element={<CartPage />} />
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route path="/register" element={<RegisterPage />} />
-                  <Route path="/welcome" element={<WelcomePage />} />
-                  <Route path="/auth-confirmation" element={<AuthConfirmationPage />} />
+                  
                   {/* Redirect for invalid routes */}
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

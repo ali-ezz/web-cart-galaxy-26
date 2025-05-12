@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -27,6 +28,7 @@ export default function WelcomePage() {
   const [maxRetries, setMaxRetries] = useState(0);
   const [lastRedirectAttempt, setLastRedirectAttempt] = useState<number | null>(null);
   const [roleCheckCompleted, setRoleCheckCompleted] = useState(false);
+  const [redirectTimer, setRedirectTimer] = useState<number | null>(null);
   
   // Log component state for debugging
   useEffect(() => {
@@ -37,15 +39,25 @@ export default function WelcomePage() {
       user, 
       verifyingUser, 
       maxRetries,
-      roleCheckCompleted 
+      roleCheckCompleted,
+      isRedirecting
     });
-  }, [isAuthenticated, userRole, loading, user, verifyingUser, maxRetries, roleCheckCompleted]);
+  }, [isAuthenticated, userRole, loading, user, verifyingUser, maxRetries, roleCheckCompleted, isRedirecting]);
+  
+  // Cleanup redirect timer when component unmounts
+  useEffect(() => {
+    return () => {
+      if (redirectTimer) {
+        clearTimeout(redirectTimer);
+      }
+    };
+  }, [redirectTimer]);
   
   // If user is not authenticated, redirect to login
   useEffect(() => {
     if (!loading && !isAuthenticated) {
       console.log("User not authenticated, redirecting to login");
-      navigate("/login");
+      navigate("/login", { replace: true });
     }
   }, [isAuthenticated, loading, navigate]);
   
@@ -70,6 +82,9 @@ export default function WelcomePage() {
               console.log("Fetching user role after verification");
               await fetchUserRole(user.id);
             }
+            
+            // Set role check as completed
+            setRoleCheckCompleted(true);
           }
         } catch (err) {
           console.error("Exception verifying user:", err);
@@ -77,7 +92,6 @@ export default function WelcomePage() {
           setMaxRetries(prev => prev + 1);
         } finally {
           setVerifyingUser(false);
-          setRoleCheckCompleted(true);
         }
       }
     };
@@ -88,9 +102,10 @@ export default function WelcomePage() {
   // Handle role-based navigation with improved error handling and timing
   useEffect(() => {
     if (roleCheckCompleted && userRole && !isRedirecting) {
+      console.log(`Role check completed with role: ${userRole}, initiating navigation`);
       navigateToRoleDashboard();
     }
-  }, [roleCheckCompleted, userRole]);
+  }, [roleCheckCompleted, userRole, isRedirecting]);
   
   // Handle manual role refresh
   const handleRefreshRole = async () => {
@@ -118,7 +133,7 @@ export default function WelcomePage() {
   };
   
   // Function to handle role-based navigation with improved error handling
-  const navigateToRoleDashboard = async () => {
+  const navigateToRoleDashboard = () => {
     // Prevent repeated redirect attempts within a short time window
     const now = Date.now();
     if (lastRedirectAttempt && now - lastRedirectAttempt < 2000) {
@@ -132,19 +147,30 @@ export default function WelcomePage() {
     
     try {
       if (!userRole) {
-        console.warn("User role not available yet, defaulting to home page");
+        console.warn("User role not available, defaulting to home page");
         toast({
           title: "Role not detected",
           description: "Your user role could not be detected. Using default view.",
         });
-        navigate("/");
+        
+        // Set a timer to navigate to home if no role is detected
+        const timer = window.setTimeout(() => {
+          navigate("/", { replace: true });
+        }, 1000);
+        
+        setRedirectTimer(timer);
         return;
       }
       
       console.log(`Navigating based on role: ${userRole}`);
       
+      // Clear any existing timer
+      if (redirectTimer) {
+        clearTimeout(redirectTimer);
+      }
+      
       // Add a small delay for better UI feedback
-      setTimeout(() => {
+      const timer = window.setTimeout(() => {
         switch (userRole) {
           case "admin":
             navigate("/admin", { replace: true });
@@ -160,7 +186,9 @@ export default function WelcomePage() {
             navigate("/home", { replace: true });
             break;
         }
-      }, 300);
+      }, 500);
+      
+      setRedirectTimer(timer);
     } catch (error) {
       console.error("Navigation error:", error);
       setError("Could not navigate to your dashboard. Please try the repair option.");
@@ -231,7 +259,7 @@ export default function WelcomePage() {
               </div>
               
               {/* Role refresh option */}
-              {error && (
+              {(error || !userRole) && (
                 <Button 
                   onClick={handleRefreshRole} 
                   disabled={refreshingRole}
@@ -295,7 +323,7 @@ export default function WelcomePage() {
         <CardFooter>
           <Button 
             onClick={navigateToRoleDashboard} 
-            disabled={loading || verifyingUser || isRedirecting || refreshingRole} 
+            disabled={loading || verifyingUser || isRedirecting || refreshingRole || !userRole} 
             className="w-full"
           >
             {isRedirecting ? (

@@ -15,6 +15,9 @@ export const verifyUserConsistency = async (userId: string): Promise<boolean> =>
   try {
     console.log(`Verifying user consistency for ID: ${userId}`);
     
+    // Add a small delay to ensure connections are established
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     // First check if user has a role
     const { data: roleData, error: roleError } = await supabase
       .from('user_roles')
@@ -118,6 +121,9 @@ export const repairUserEntries = async (userId: string): Promise<boolean> => {
   
   try {
     console.log(`Attempting to repair entries for user ID: ${userId}`);
+    
+    // Add a small delay to ensure connections are established
+    await new Promise(resolve => setTimeout(resolve, 200));
     
     // First try to get the current session to access metadata
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();

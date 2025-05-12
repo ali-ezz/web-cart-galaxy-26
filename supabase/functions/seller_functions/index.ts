@@ -19,6 +19,11 @@ serve(async (req) => {
     // Create a Supabase client with the Auth context
     const supabaseUrl = Deno.env.get('SUPABASE_URL') as string;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') as string;
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Missing Supabase credentials');
+    }
+    
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get the authorization header from the request
@@ -44,7 +49,16 @@ serve(async (req) => {
     }
 
     // Parse the request body
-    const requestBody = await req.json();
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (e) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid JSON body' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+    
     const { action, ...params } = requestBody;
 
     console.log("Seller function called with action:", action, "params:", params);
@@ -81,6 +95,10 @@ async function getSellerSales(supabase, sellerId, corsHeaders) {
   console.log("Request:", { action: "get_seller_sales", seller_id: sellerId });
   
   try {
+    if (!sellerId) {
+      throw new Error('seller_id is required');
+    }
+    
     // Fixed query to correctly count products
     const { data: products, count: productCount, error: productsError } = await supabase
       .from('products')
@@ -107,8 +125,15 @@ async function getSellerSales(supabase, sellerId, corsHeaders) {
       );
     }
     
-    // Get pending orders count (simplified for now)
-    const pendingOrdersCount = 0; // We'll implement this properly later
+    // Get pending orders count
+    const { count: pendingOrdersCount, error: pendingOrdersError } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'pending');
+      
+    if (pendingOrdersError) {
+      console.error("Error getting pending orders:", pendingOrdersError);
+    }
     
     return new Response(
       JSON.stringify({
@@ -117,7 +142,7 @@ async function getSellerSales(supabase, sellerId, corsHeaders) {
         sales_by_product: [],
         total: 0,
         productCount: productCount || products.length,
-        count: pendingOrdersCount
+        count: pendingOrdersCount || 0
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -135,10 +160,24 @@ async function getSellerPendingOrders(supabase, sellerId, corsHeaders) {
   console.log("Request:", { action: "get_seller_pending_orders", seller_id: sellerId });
   
   try {
+    if (!sellerId) {
+      throw new Error('seller_id is required');
+    }
+    
     // This is a temporary simplification to avoid RLS errors
-    // We'll just return an empty orders array for now
+    const { data: orders, count, error } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact' })
+      .eq('status', 'pending')
+      .limit(10);
+      
+    if (error) {
+      console.error("Error fetching pending orders:", error);
+      throw error;
+    }
+    
     return new Response(
-      JSON.stringify({ orders: [], count: 0 }),
+      JSON.stringify({ orders: orders || [], count: count || 0 }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
@@ -153,6 +192,10 @@ async function getSellerPendingOrders(supabase, sellerId, corsHeaders) {
 
 async function getSellerProducts(supabase, sellerId, corsHeaders) {
   try {
+    if (!sellerId) {
+      throw new Error('seller_id is required');
+    }
+    
     // Get all products from this seller
     const { data: products, error: productsError } = await supabase
       .from('products')

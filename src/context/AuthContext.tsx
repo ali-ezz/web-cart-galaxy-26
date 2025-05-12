@@ -41,6 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [roleLoading, setRoleLoading] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [roleFetchAttempts, setRoleFetchAttempts] = useState(0);
   const { toast } = useToast();
 
   // Return all auth state for debugging purposes
@@ -51,7 +52,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated,
       loading,
       roleLoading,
-      userRole
+      userRole,
+      roleFetchAttempts
     };
   };
 
@@ -189,11 +191,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           
           setUser(userData);
           setIsAuthenticated(true);
+          setRoleFetchAttempts(0);
           
           // Handle SSO signup events
           if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-            // Verify user consistency on auth state change, but don't block UI
-            setTimeout(async () => {
+            // Verify user consistency on auth state change
+            try {
               // Verify and repair user data if needed
               const isConsistent = await verifyUserConsistency(currentSession.user.id);
               if (isConsistent) {
@@ -202,18 +205,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 console.log(`User role after auth state change: ${role}`);
               } else {
                 console.error("User data is inconsistent");
-                toast({
-                  title: "Account issue detected",
-                  description: "There may be a problem with your account data. Please use the Repair button.",
-                  variant: "destructive",
-                });
+                const repaired = await repairUserEntries(currentSession.user.id);
+                if (repaired) {
+                  const role = await fetchUserRole(currentSession.user.id);
+                  console.log(`User role after repair: ${role}`);
+                } else {
+                  toast({
+                    title: "Account issue detected",
+                    description: "There may be a problem with your account data. Please use the Repair button.",
+                    variant: "destructive",
+                  });
+                }
               }
-            }, 0);
+            } catch (err) {
+              console.error("Error in auth state change handling:", err);
+            }
           }
         } else {
           setUser(null);
           setIsAuthenticated(false);
           setUserRole(null);
+          setRoleFetchAttempts(0);
         }
       }
     );
@@ -232,39 +244,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log("Checking existing session", existingSession?.user?.id || 'No session');
         
         if (existingSession?.user) {
-          // Verify the user exists in the database and fix if needed
-          const isConsistent = await verifyUserConsistency(existingSession.user.id);
-          
-          if (!isConsistent) {
-            console.warn("User data is inconsistent, will auto-repair in background");
-            toast({
-              title: "Account verification",
-              description: "We're checking your account data...",
-            });
+          try {
+            // Verify the user exists in the database and fix if needed
+            const isConsistent = await verifyUserConsistency(existingSession.user.id);
             
-            // Continue with session, verification will happen in background
+            if (!isConsistent) {
+              console.warn("User data is inconsistent, will auto-repair");
+              toast({
+                title: "Account verification",
+                description: "We're checking your account data...",
+              });
+              
+              // Attempt to repair automatically
+              await repairUserEntries(existingSession.user.id);
+            }
+            
+            // Extract name from metadata with fallbacks for SSO providers
+            const userName = existingSession.user.user_metadata?.name || 
+                            existingSession.user.user_metadata?.full_name || 
+                            existingSession.user.user_metadata?.preferred_username || 
+                            existingSession.user.email?.split('@')[0] || 
+                            'User';
+            
+            const userData = {
+              id: existingSession.user.id,
+              name: userName,
+              email: existingSession.user.email || '',
+            };
+            
+            setUser(userData);
+            setSession(existingSession);
+            setIsAuthenticated(true);
+            
+            // Fetch user role immediately
+            const role = await fetchUserRole(existingSession.user.id);
+            console.log(`Initial role fetch complete: ${role}`);
+          } catch (err) {
+            console.error("Error during session verification:", err);
           }
-          
-          // Extract name from metadata with fallbacks for SSO providers
-          const userName = existingSession.user.user_metadata?.name || 
-                          existingSession.user.user_metadata?.full_name || 
-                          existingSession.user.user_metadata?.preferred_username || 
-                          existingSession.user.email?.split('@')[0] || 
-                          'User';
-          
-          const userData = {
-            id: existingSession.user.id,
-            name: userName,
-            email: existingSession.user.email || '',
-          };
-          
-          setUser(userData);
-          setSession(existingSession);
-          setIsAuthenticated(true);
-          
-          // Fetch user role immediately
-          const role = await fetchUserRole(existingSession.user.id);
-          console.log(`Initial role fetch complete: ${role}`);
         }
         
         setLoading(false);
@@ -281,6 +298,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Add retry mechanism for role fetching
+  useEffect(() => {
+    if (isAuthenticated && user?.id && !userRole && roleFetchAttempts < 3) {
+      const fetchRoleWithRetry = async () => {
+        try {
+          const role = await fetchUserRole(user.id);
+          if (!role) {
+            setRoleFetchAttempts(prev => prev + 1);
+            console.log(`Role fetch attempt ${roleFetchAttempts + 1} failed`);
+          }
+        } catch (err) {
+          console.error("Error fetching role:", err);
+          setRoleFetchAttempts(prev => prev + 1);
+        }
+      };
+      
+      // Wait a bit longer between retries
+      const delay = roleFetchAttempts * 1000;
+      const timer = setTimeout(fetchRoleWithRetry, delay);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthenticated, user, userRole, roleFetchAttempts]);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
@@ -499,6 +540,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(null);
       setIsAuthenticated(false);
       setUserRole(null);
+      setRoleFetchAttempts(0);
       
       toast({
         title: "Logged out",

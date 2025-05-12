@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -11,7 +12,7 @@ import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from '@/hooks/use-toast';
-import LoginTroubleshooting from '@/components/LoginTroubleshooting';
+import LoginTroubleshooting from "@/components/LoginTroubleshooting";
 
 // Create a schema for form validation
 const loginSchema = z.object({
@@ -22,16 +23,17 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
-  const { login, isAuthenticated, userRole } = useAuth();
+  const { login, isAuthenticated, userRole, loading, user, fetchUserRole } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [verifyingSession, setVerifyingSession] = useState(true);
   const [error, setError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
-  const [redirectAttempted, setRedirectAttempted] = useState(false);
+  const [lastRedirectTime, setLastRedirectTime] = useState<number | null>(null);
+  const [roleCheckCompleted, setRoleCheckCompleted] = useState(false);
   
   // Initialize form with Zod resolver
   const form = useForm<LoginFormValues>({
@@ -41,6 +43,10 @@ export default function LoginPage() {
       password: '',
     },
   });
+  
+  useEffect(() => {
+    console.log("LoginPage state:", { isAuthenticated, userRole, loading, userId: user?.id, roleCheckCompleted });
+  }, [isAuthenticated, userRole, loading, user, roleCheckCompleted]);
   
   // First verify if the session is valid before checking authentication
   useEffect(() => {
@@ -52,8 +58,9 @@ export default function LoginPage() {
         const { data, error } = await supabase.auth.getSession();
         
         if (data.session) {
-          console.log("Active session found");
-          // No need to verify further in login page, let the redirect handle it
+          console.log("Active session found in LoginPage");
+          // Setting verified to trigger the redirect flow below
+          setRoleCheckCompleted(true);
         }
       } catch (err) {
         console.error("Error verifying session:", err);
@@ -66,23 +73,56 @@ export default function LoginPage() {
     verifySession();
   }, []);
   
+  // Fetch role when user is authenticated but role is missing
+  useEffect(() => {
+    if (isAuthenticated && user?.id && !userRole && !roleCheckCompleted) {
+      const fetchRole = async () => {
+        try {
+          console.log("Fetching role for authenticated user");
+          const role = await fetchUserRole(user.id);
+          if (role) {
+            console.log("Role fetched successfully:", role);
+            setRoleCheckCompleted(true);
+          }
+        } catch (err) {
+          console.error("Error fetching role:", err);
+        }
+      };
+      
+      fetchRole();
+    }
+  }, [isAuthenticated, user, userRole, fetchUserRole, roleCheckCompleted]);
+  
   // Improved check if user is already authenticated, redirect to appropriate page
   useEffect(() => {
-    if (!verifyingSession && isAuthenticated && !redirectAttempted) {
-      setRedirectAttempted(true); // Prevent multiple redirects
-      console.log("Auth state detected, preparing for redirect with role:", userRole);
+    const now = Date.now();
+    
+    // Prevent multiple redirects within a short time window
+    if (lastRedirectTime && now - lastRedirectTime < 2000) {
+      console.log("Preventing rapid redirects");
+      return;
+    }
+    
+    if (!loading && !verifyingSession && isAuthenticated) {
+      console.log("Auth state detected in LoginPage, preparing for redirect with role:", userRole);
+      
+      // Set the redirect time to prevent multiple redirects
+      setLastRedirectTime(now);
       
       // Add a deliberate delay to ensure roles are properly loaded
       setTimeout(() => {
-        const redirectTo = location.state?.from || (userRole ? getRoleBasedRedirect(userRole) : '/welcome');
+        const redirectTo = location.state?.from || getRoleBasedRedirect(userRole);
         console.log(`User authenticated, redirecting to: ${redirectTo}`);
+        
         navigate(redirectTo, { replace: true });
-      }, 500); // Increased delay for more reliable role detection
+      }, 500);
     }
-  }, [isAuthenticated, verifyingSession, userRole, navigate, location.state, redirectAttempted]);
+  }, [isAuthenticated, verifyingSession, userRole, loading, navigate, location.state, lastRedirectTime, roleCheckCompleted]);
   
   // Helper function to determine where to redirect based on user role
-  const getRoleBasedRedirect = (role: string): string => {
+  const getRoleBasedRedirect = (role: string | null): string => {
+    if (!role) return '/welcome'; // Send to welcome page if role is not yet loaded
+    
     switch(role) {
       case 'admin': return '/admin';
       case 'seller': return '/seller';
@@ -107,7 +147,7 @@ export default function LoginPage() {
         const { data, error } = await supabase.auth.getSession();
         if (!error && data.session) {
           console.log("Session refreshed successfully");
-          setRedirectAttempted(false); // Reset redirect flag to trigger redirection
+          setRoleCheckCompleted(false); // Reset role check to trigger redirection
         } else {
           setVerifyingSession(false);
           setError("Session refresh failed. Please try logging in again.");
@@ -121,7 +161,9 @@ export default function LoginPage() {
   };
   
   const onSubmit = async (data: LoginFormValues) => {
-    setLoading(true);
+    if (isLoggingIn) return; // Prevent duplicate submissions
+    
+    setIsLoggingIn(true);
     setError('');
     
     try {
@@ -137,8 +179,8 @@ export default function LoginPage() {
           variant: "default"
         });
         
-        // Reset redirect flag to trigger the redirection useEffect
-        setRedirectAttempted(false);
+        // Reset role check to trigger the redirection useEffect
+        setRoleCheckCompleted(false);
       } else {
         setError('Invalid email or password');
         setShowTroubleshooting(true);
@@ -148,7 +190,7 @@ export default function LoginPage() {
       setError('An error occurred during login. Please try again.');
       setShowTroubleshooting(true);
     } finally {
-      setLoading(false);
+      setIsLoggingIn(false);
     }
   };
 
@@ -175,7 +217,7 @@ export default function LoginPage() {
                     size="sm" 
                     onClick={handleRetry} 
                     className="mt-2"
-                    disabled={loading}
+                    disabled={isLoggingIn}
                   >
                     Retry Connection
                   </Button>
@@ -236,9 +278,9 @@ export default function LoginPage() {
                 <Button
                   type="submit"
                   className="w-full bg-shop-purple hover:bg-shop-purple-dark py-6"
-                  disabled={loading}
+                  disabled={isLoggingIn || loading}
                 >
-                  {loading ? (
+                  {isLoggingIn || loading ? (
                     <> 
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing In...
                     </>
