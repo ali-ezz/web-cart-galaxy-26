@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -65,13 +64,14 @@ const roleQuestions: Record<string, RoleQuestion[]> = {
 };
 
 export default function RegisterPage() {
-  const { register: registerAuth } = useAuth();
+  const { register: registerAuth, isAuthenticated, userRole } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole>('customer');
   const [questionResponses, setQuestionResponses] = useState<Record<string, string>>({});
   const [retryCount, setRetryCount] = useState(0);
+  const [redirectAttempted, setRedirectAttempted] = useState(false);
   
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -83,6 +83,38 @@ export default function RegisterPage() {
       role: "customer"
     }
   });
+  
+  // Check if already authenticated and redirect 
+  useEffect(() => {
+    if (isAuthenticated && !redirectAttempted) {
+      setRedirectAttempted(true);
+      console.log("User already authenticated, redirecting");
+      
+      // Add a short delay to ensure role is loaded
+      setTimeout(() => {
+        if (userRole) {
+          console.log(`Redirecting to role dashboard: ${userRole}`);
+          switch (userRole) {
+            case 'admin':
+              navigate('/admin');
+              break;
+            case 'seller':
+              navigate('/seller');
+              break;
+            case 'delivery':
+              navigate('/delivery');
+              break;
+            default:
+              navigate('/');
+              break;
+          }
+        } else {
+          // If no role detected yet, go to welcome page which handles role detection
+          navigate('/welcome');
+        }
+      }, 500);
+    }
+  }, [isAuthenticated, userRole, navigate, redirectAttempted]);
   
   const handleRoleChange = (role: UserRole) => {
     setSelectedRole(role);
@@ -130,11 +162,13 @@ export default function RegisterPage() {
         data.name, 
         data.email, 
         data.password,
-        userRole, // Now correctly typed as UserRole
+        userRole,
         questionResponses
       );
       
       if (success) {
+        // Reset redirect flag to trigger the redirect useEffect
+        setRedirectAttempted(false);
         navigate('/auth-confirmation');
       } else {
         setError('Registration failed. Please try again.');

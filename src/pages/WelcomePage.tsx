@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -27,11 +26,71 @@ export default function WelcomePage() {
   const [refreshingRole, setRefreshingRole] = useState(false);
   const [maxRetries, setMaxRetries] = useState(0);
   const [lastRedirectAttempt, setLastRedirectAttempt] = useState<number | null>(null);
+  const [roleCheckCompleted, setRoleCheckCompleted] = useState(false);
   
   // Log component state for debugging
   useEffect(() => {
-    console.log("Welcome page state:", { isAuthenticated, userRole, loading, user, verifyingUser, maxRetries });
-  }, [isAuthenticated, userRole, loading, user, verifyingUser, maxRetries]);
+    console.log("Welcome page state:", { 
+      isAuthenticated, 
+      userRole, 
+      loading, 
+      user, 
+      verifyingUser, 
+      maxRetries,
+      roleCheckCompleted 
+    });
+  }, [isAuthenticated, userRole, loading, user, verifyingUser, maxRetries, roleCheckCompleted]);
+  
+  // If user is not authenticated, redirect to login
+  useEffect(() => {
+    if (!loading && !isAuthenticated) {
+      console.log("User not authenticated, redirecting to login");
+      navigate("/login");
+    }
+  }, [isAuthenticated, loading, navigate]);
+  
+  // Verify user exists on load and fetch role if needed
+  useEffect(() => {
+    const verifyUser = async () => {
+      if (isAuthenticated && user?.id && !loading && !roleCheckCompleted) {
+        setVerifyingUser(true);
+        setError(null);
+        
+        try {
+          console.log("Verifying user consistency...");
+          const isConsistent = await verifyUserConsistency(user.id);
+          
+          if (!isConsistent) {
+            console.warn("User verification failed");
+            setError("Your account data couldn't be verified. Please use the repair option below.");
+            setMaxRetries(prev => prev + 1);
+          } else {
+            // If userRole is not yet set, fetch it
+            if (!userRole) {
+              console.log("Fetching user role after verification");
+              await fetchUserRole(user.id);
+            }
+          }
+        } catch (err) {
+          console.error("Exception verifying user:", err);
+          setError("An unexpected error occurred. Please try the repair option.");
+          setMaxRetries(prev => prev + 1);
+        } finally {
+          setVerifyingUser(false);
+          setRoleCheckCompleted(true);
+        }
+      }
+    };
+    
+    verifyUser();
+  }, [isAuthenticated, user, loading, userRole, fetchUserRole, roleCheckCompleted]);
+  
+  // Handle role-based navigation with improved error handling and timing
+  useEffect(() => {
+    if (roleCheckCompleted && userRole && !isRedirecting) {
+      navigateToRoleDashboard();
+    }
+  }, [roleCheckCompleted, userRole]);
   
   // Handle manual role refresh
   const handleRefreshRole = async () => {
@@ -39,6 +98,7 @@ export default function WelcomePage() {
     
     setRefreshingRole(true);
     setError(null);
+    
     try {
       const role = await fetchUserRole(user.id);
       toast({
@@ -46,12 +106,8 @@ export default function WelcomePage() {
         description: role ? `Your current role is: ${role}` : "No role could be detected",
       });
       
-      // Wait a moment and then try to navigate based on the new role
-      if (role) {
-        setTimeout(() => {
-          navigateToRoleDashboard();
-        }, 1000);
-      }
+      // Set role check as completed to trigger navigation
+      setRoleCheckCompleted(true);
     } catch (err) {
       console.error("Error refreshing role:", err);
       setError("Failed to refresh role. Please try the repair option.");
@@ -60,51 +116,6 @@ export default function WelcomePage() {
       setRefreshingRole(false);
     }
   };
-  
-  // Function to verify the user exists in the database with improved error handling
-  const verifyUserExists = async () => {
-    if (!user?.id) {
-      console.error("No user ID available to verify");
-      return false;
-    }
-    
-    setVerifyingUser(true);
-    setError(null);
-    
-    try {
-      console.log(`Verifying user ID: ${user.id} on Welcome page`);
-      
-      const isConsistent = await verifyUserConsistency(user.id);
-      
-      if (!isConsistent) {
-        console.warn("User verification failed on welcome page");
-        setError("Your account data couldn't be verified. Please use the repair option below.");
-        setMaxRetries(prev => prev + 1);
-        return false;
-      }
-      
-      // Refresh role after verification
-      if (user.id) {
-        await fetchUserRole(user.id);
-      }
-      
-      return true;
-    } catch (err) {
-      console.error("Exception verifying user:", err);
-      setError("An unexpected error occurred. Please try the repair option.");
-      setMaxRetries(prev => prev + 1);
-      return false;
-    } finally {
-      setVerifyingUser(false);
-    }
-  };
-  
-  // Verify user data on initial load
-  useEffect(() => {
-    if (isAuthenticated && user?.id && !loading) {
-      verifyUserExists();
-    }
-  }, [isAuthenticated, user, loading]);
   
   // Function to handle role-based navigation with improved error handling
   const navigateToRoleDashboard = async () => {
@@ -120,51 +131,36 @@ export default function WelcomePage() {
     setError(null);
     
     try {
-      // Verify user exists in database if we haven't done it recently
-      if (maxRetries < 3) {
-        const userExists = await verifyUserExists();
-        if (!userExists) {
-          console.warn("User validation failed, redirecting to login");
-          toast({
-            title: "Account Problem",
-            description: "There was a problem with your account. Please log in again.",
-            variant: "destructive",
-          });
-          await supabase.auth.signOut();
-          navigate("/login");
-          return;
-        }
+      if (!userRole) {
+        console.warn("User role not available yet, defaulting to home page");
+        toast({
+          title: "Role not detected",
+          description: "Your user role could not be detected. Using default view.",
+        });
+        navigate("/");
+        return;
       }
       
-      // Add a small delay to ensure userRole is updated
+      console.log(`Navigating based on role: ${userRole}`);
+      
+      // Add a small delay for better UI feedback
       setTimeout(() => {
-        if (!userRole) {
-          console.warn("User role not available yet, defaulting to home page");
-          toast({
-            title: "Role not detected",
-            description: "Your user role could not be detected. Using default view.",
-          });
-          navigate("/");
-          return;
-        }
-        
-        console.log(`Navigating based on role: ${userRole}`);
         switch (userRole) {
           case "admin":
-            navigate("/admin");
+            navigate("/admin", { replace: true });
             break;
           case "seller":
-            navigate("/seller");
+            navigate("/seller", { replace: true });
             break;
           case "delivery":
-            navigate("/delivery");
+            navigate("/delivery", { replace: true });
             break;
           case "customer":
           default:
-            navigate("/home");
+            navigate("/home", { replace: true });
             break;
         }
-      }, 300); // Short delay to ensure userRole is properly loaded
+      }, 300);
     } catch (error) {
       console.error("Navigation error:", error);
       setError("Could not navigate to your dashboard. Please try the repair option.");
@@ -172,23 +168,6 @@ export default function WelcomePage() {
       setMaxRetries(prev => prev + 1);
     }
   };
-
-  // Handle authentication changes
-  useEffect(() => {
-    // If loading is complete and we have authentication info, proceed
-    if (!loading) {
-      if (!isAuthenticated) {
-        console.log("User not authenticated, redirecting to login");
-        navigate("/login");
-      } else if (userRole) {
-        // If we have a role and we're not already redirecting, navigate based on role
-        if (!isRedirecting) {
-          console.log(`User authenticated with role ${userRole}, proceeding to navigation`);
-          // Don't redirect immediately, let the user see the welcome page first
-        }
-      }
-    }
-  }, [isAuthenticated, userRole, loading]);
 
   // If too many retries, account is likely deleted or has serious issues
   if (maxRetries >= 3) {
@@ -293,7 +272,8 @@ export default function WelcomePage() {
                       hasUser: !!user,
                       userId: user?.id,
                       retries: maxRetries,
-                      redirecting: isRedirecting
+                      redirecting: isRedirecting,
+                      roleCheckCompleted
                     }, null, 2)}
                   </pre>
                 </div>
@@ -301,7 +281,12 @@ export default function WelcomePage() {
               
               {/* Troubleshooting option */}
               <div className="mt-4 flex justify-center">
-                <LoginTroubleshooting onRepair={() => verifyUserExists()} />
+                <LoginTroubleshooting onRepair={() => {
+                  setRoleCheckCompleted(false);
+                  if (user?.id) {
+                    verifyUserConsistency(user.id);
+                  }
+                }} />
               </div>
             </>
           )}

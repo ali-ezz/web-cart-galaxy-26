@@ -19,6 +19,10 @@ import DeliveryRoutesPage from '@/pages/delivery/DeliveryRoutesPage';
 import DeliveryEarningsPage from '@/pages/delivery/DeliveryEarningsPage';
 import CartPage from '@/pages/CartPage';
 import AvailableOrdersPage from '@/pages/delivery/AvailableOrdersPage';
+import LoginPage from '@/pages/LoginPage';
+import RegisterPage from '@/pages/RegisterPage';
+import WelcomePage from '@/pages/WelcomePage';
+import AuthConfirmationPage from '@/pages/AuthConfirmationPage';
 // Add other imports as needed
 
 // Create a client for React Query
@@ -55,6 +59,10 @@ function App() {
                   <Route path="/delivery/available" element={<AvailableOrdersPage />} />
                   <Route path="/account" element={<AccountPage />} />
                   <Route path="/cart" element={<CartPage />} />
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/register" element={<RegisterPage />} />
+                  <Route path="/welcome" element={<WelcomePage />} />
+                  <Route path="/auth-confirmation" element={<AuthConfirmationPage />} />
                   {/* Redirect for invalid routes */}
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
