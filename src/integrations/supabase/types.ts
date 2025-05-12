@@ -74,6 +74,36 @@ export type Database = {
           },
         ]
       }
+      delivery_schedules: {
+        Row: {
+          available: boolean
+          created_at: string | null
+          day_of_week: number
+          delivery_person_id: string
+          end_time: string
+          id: string
+          start_time: string
+        }
+        Insert: {
+          available?: boolean
+          created_at?: string | null
+          day_of_week: number
+          delivery_person_id: string
+          end_time: string
+          id?: string
+          start_time: string
+        }
+        Update: {
+          available?: boolean
+          created_at?: string | null
+          day_of_week?: number
+          delivery_person_id?: string
+          end_time?: string
+          id?: string
+          start_time?: string
+        }
+        Relationships: []
+      }
       order_items: {
         Row: {
           created_at: string

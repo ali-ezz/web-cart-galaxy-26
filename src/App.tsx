@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -5,7 +6,6 @@ import { AuthProvider } from '@/context/AuthContext';
 import { CartProvider } from '@/context/CartContext';
 import { Toaster } from "@/components/ui/toaster";
 import { Header } from '@/components/Header';
-import { Footer } from '@/components/Footer';
 import Index from '@/pages/Index';
 import ProductPage from '@/pages/ProductPage';
 import AdminDashboardPage from '@/pages/AdminDashboardPage';
@@ -13,6 +13,11 @@ import SellerDashboardPage from '@/pages/SellerDashboardPage';
 import DeliveryDashboardPage from '@/pages/DeliveryDashboardPage';
 import AccountPage from '@/pages/AccountPage';
 import AdminProductsPage from '@/pages/admin/AdminProductsPage';
+import DeliverySchedulePage from '@/pages/delivery/DeliverySchedulePage';
+import DeliveryAssignmentsPage from '@/pages/delivery/DeliveryAssignmentsPage';
+import DeliveryRoutesPage from '@/pages/delivery/DeliveryRoutesPage';
+import DeliveryEarningsPage from '@/pages/delivery/DeliveryEarningsPage';
+import CartPage from '@/pages/CartPage';
 // Add other imports as needed
 
 // Create a client for React Query
@@ -42,11 +47,16 @@ function App() {
                   <Route path="/admin/products" element={<AdminProductsPage />} />
                   <Route path="/seller" element={<SellerDashboardPage />} />
                   <Route path="/delivery" element={<DeliveryDashboardPage />} />
+                  <Route path="/delivery/schedule" element={<DeliverySchedulePage />} />
+                  <Route path="/delivery/assignments" element={<DeliveryAssignmentsPage />} />
+                  <Route path="/delivery/routes" element={<DeliveryRoutesPage />} />
+                  <Route path="/delivery/earnings" element={<DeliveryEarningsPage />} />
                   <Route path="/account" element={<AccountPage />} />
+                  <Route path="/cart" element={<CartPage />} />
                   {/* Add other routes as needed */}
                 </Routes>
               </main>
-              <Footer />
+              {/* Footer removed as requested */}
             </div>
             <Toaster />
           </Router>

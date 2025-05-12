@@ -18,19 +18,32 @@ export interface DeliverySlot {
   status: "available" | "booked" | "completed" | "unavailable";
 }
 
-// We need to create a delivery_schedules table in the database first
-// For now, we'll use a mock implementation
+// Fetch weekly schedule from the delivery_schedules table
 export const fetchWeeklySchedule = async (userId: string): Promise<TimeSlot[]> => {
   try {
-    // First check if the table exists before querying it
+    // Query the delivery_schedules table
     const { data, error } = await supabase
-      .from('delivery_assignments')
+      .from('delivery_schedules')
       .select('*')
-      .eq('delivery_person_id', userId)
-      .limit(1);
+      .eq('delivery_person_id', userId);
     
-    // Return default schedule since the real table doesn't exist yet
-    return getDefaultWeeklySchedule();
+    if (error) {
+      console.error("Error fetching weekly schedule:", error);
+      return getDefaultWeeklySchedule();
+    }
+    
+    if (!data || data.length === 0) {
+      return getDefaultWeeklySchedule();
+    }
+    
+    // Convert database format to TimeSlot format
+    return data.map(item => ({
+      id: item.id,
+      day: item.day_of_week,
+      startTime: item.start_time,
+      endTime: item.end_time,
+      available: item.available
+    }));
   } catch (error) {
     console.error("Error fetching weekly schedule:", error);
     return getDefaultWeeklySchedule();
@@ -40,9 +53,35 @@ export const fetchWeeklySchedule = async (userId: string): Promise<TimeSlot[]> =
 // Save weekly schedule for a delivery person
 export const saveWeeklySchedule = async (userId: string, schedule: TimeSlot[]): Promise<boolean> => {
   try {
-    console.log("Saving schedule for user:", userId, schedule);
-    // Since we don't have the delivery_schedules table yet, just log the data
-    // and return success for now
+    // First, delete existing entries
+    const { error: deleteError } = await supabase
+      .from('delivery_schedules')
+      .delete()
+      .eq('delivery_person_id', userId);
+      
+    if (deleteError) {
+      console.error("Error deleting existing schedules:", deleteError);
+      return false;
+    }
+    
+    // Then, insert new entries
+    const newEntries = schedule.map(slot => ({
+      delivery_person_id: userId,
+      day_of_week: slot.day,
+      start_time: slot.startTime,
+      end_time: slot.endTime,
+      available: slot.available
+    }));
+    
+    const { error: insertError } = await supabase
+      .from('delivery_schedules')
+      .insert(newEntries);
+      
+    if (insertError) {
+      console.error("Error inserting new schedules:", insertError);
+      return false;
+    }
+    
     return true;
   } catch (error) {
     console.error("Error saving weekly schedule:", error);
@@ -69,9 +108,11 @@ export const fetchDeliverySlots = async (
       .gte('created_at', formattedStartDate)
       .lte('created_at', formattedEndDate);
     
-    if (assignmentsError) throw assignmentsError;
+    if (assignmentsError) {
+      console.error("Error fetching assignments:", assignmentsError);
+    }
     
-    // Get the user's schedule to determine available slots
+    // Get the user's schedule
     const schedule = await fetchWeeklySchedule(userId);
     
     // Generate all possible slots based on schedule
@@ -114,12 +155,12 @@ export const fetchDeliverySlots = async (
     // Update slots with actual assignments
     if (assignments && assignments.length > 0) {
       assignments.forEach(assignment => {
-        const assignmentDate = parseISO(assignment.assigned_at);
+        const assignmentDate = assignment.assigned_at ? new Date(assignment.assigned_at) : new Date();
         
         // Find matching slot for this assignment
         const matchingSlotIndex = slots.findIndex(slot => 
           isSameDay(slot.date, assignmentDate) && 
-          timeInSlot(assignment.assigned_at, slot.time)
+          assignment.assigned_at && timeInSlot(assignment.assigned_at, slot.time)
         );
         
         if (matchingSlotIndex >= 0) {
@@ -180,11 +221,16 @@ const isSameDay = (date1: Date, date2: Date): boolean => {
 
 // Check if a timestamp falls within a time range string "XX:XX - YY:YY"
 const timeInSlot = (timestamp: string, timeRange: string): boolean => {
-  const [start, end] = timeRange.split(' - ');
-  const date = new Date(timestamp);
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-  const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  
-  return timeStr >= start && timeStr <= end;
+  try {
+    const [start, end] = timeRange.split(' - ');
+    const date = new Date(timestamp);
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    
+    return timeStr >= start && timeStr <= end;
+  } catch (error) {
+    console.error("Error in timeInSlot:", error);
+    return false;
+  }
 };
