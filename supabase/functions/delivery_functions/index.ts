@@ -68,9 +68,12 @@ serve(async (req) => {
       case 'get_schedule':
         return await getSchedule(supabase, user.id, corsHeaders);
       
+      case 'get_delivery_assignments':
+        return await getDeliveryAssignments(supabase, user.id, corsHeaders);
+      
       default:
         return new Response(
-          JSON.stringify({ error: `Unknown action: ${action}` }),
+          JSON.stringify({ error: `Unknown action: ${action}`, valid_actions: ['get_delivery_stats', 'get_available_orders', 'accept_order', 'complete_delivery', 'save_schedule', 'get_schedule', 'get_delivery_assignments'] }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
         );
     }
@@ -78,8 +81,28 @@ serve(async (req) => {
     // Handle any errors
     console.error(`Error processing request:`, error);
     
+    // More detailed error response
+    let errorMessage = 'Unknown error occurred';
+    let errorDetails = null;
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      errorDetails = error.stack;
+    } else if (typeof error === 'object' && error !== null) {
+      errorMessage = String(error);
+      try {
+        errorDetails = JSON.stringify(error);
+      } catch (_) {
+        // Ignore
+      }
+    }
+    
     return new Response(
-      JSON.stringify({ error: error.message || 'Unknown error occurred' }),
+      JSON.stringify({ 
+        error: errorMessage, 
+        details: errorDetails,
+        hint: "Check your request parameters and authentication" 
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }
@@ -441,6 +464,67 @@ async function getSchedule(supabase, userId, corsHeaders) {
     
     return new Response(
       JSON.stringify({ error: error.message || 'Failed to get schedule' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
+  }
+}
+
+// NEW FUNCTION: Get delivery assignments for a delivery person
+async function getDeliveryAssignments(supabase, userId, corsHeaders) {
+  try {
+    console.log("Getting delivery assignments for user:", userId);
+    
+    // Get all assignments for this delivery person with order details
+    const { data, error } = await supabase
+      .from('delivery_assignments')
+      .select(`
+        id, 
+        order_id,
+        assigned_at,
+        delivered_at,
+        status,
+        notes,
+        orders:order_id (
+          id,
+          created_at,
+          total,
+          shipping_address,
+          shipping_city,
+          shipping_state, 
+          shipping_postal_code,
+          status
+        )
+      `)
+      .eq('delivery_person_id', userId)
+      .order('assigned_at', { ascending: false });
+    
+    if (error) {
+      console.error("Error fetching delivery assignments:", error);
+      throw error;
+    }
+    
+    // Convert to a nicer format for the frontend
+    const assignments = (data || []).map(item => ({
+      id: item.id,
+      order_id: item.order_id,
+      assigned_at: item.assigned_at,
+      delivered_at: item.delivered_at,
+      status: item.status,
+      notes: item.notes,
+      order: item.orders
+    }));
+    
+    console.log(`Found ${assignments.length} assignments for delivery person ${userId}`);
+    
+    return new Response(
+      JSON.stringify({ assignments }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error("Error getting delivery assignments:", error);
+    
+    return new Response(
+      JSON.stringify({ error: error.message || 'Failed to get delivery assignments' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }

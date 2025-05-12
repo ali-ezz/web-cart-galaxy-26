@@ -10,10 +10,17 @@ export function UserRoleDebug() {
   const getDebugState = () => {
     // Return basic auth state information
     return {
-      user: auth.user,
+      user: auth.user ? {
+        id: auth.user.id,
+        email: auth.user.email,
+        name: auth.user.user_metadata?.name || auth.user.email?.split('@')[0] || 'Anonymous',
+        metadata: auth.user.user_metadata
+      } : null,
       isAuthenticated: auth.isAuthenticated,
       authState: auth.authState,
       userRole: auth.userRole,
+      sessionExists: !!auth.session,
+      sessionExpires: auth.session?.expires_at ? new Date(auth.session.expires_at * 1000).toLocaleString() : 'N/A'
     };
   };
   

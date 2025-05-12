@@ -9,6 +9,7 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
+// Initialize connection with improved timeout and retry settings
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     storage: localStorage,
@@ -19,28 +20,72 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
   },
   global: {
     fetch: (url, options) => {
-      // Custom fetch with timeout
-      const fetchPromise = fetch(url, options);
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Connection timed out')), 15000); // 15 second timeout
-      });
-      return Promise.race([fetchPromise, timeoutPromise]) as Promise<Response>;
+      // Custom fetch with longer timeout and retry logic
+      const fetchWithRetry = async (attempt = 1, maxAttempts = 3) => {
+        try {
+          const fetchPromise = fetch(url, options);
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            // Increased timeout from 15 to 30 seconds
+            setTimeout(() => reject(new Error(`Connection timed out after ${30000}ms`)), 30000);
+          });
+          
+          return await Promise.race([fetchPromise, timeoutPromise]) as Response;
+        } catch (err) {
+          // Implement exponential backoff
+          if (attempt < maxAttempts) {
+            const delay = Math.min(1000 * (2 ** attempt), 10000);
+            console.log(`Retrying Supabase request. Attempt ${attempt + 1}/${maxAttempts} after ${delay}ms`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return fetchWithRetry(attempt + 1, maxAttempts);
+          }
+          throw err;
+        }
+      };
+      
+      return fetchWithRetry();
     }
   },
   db: {
     schema: 'public'
   },
   realtime: {
-    timeout: 10000 // 10 seconds
+    timeout: 20000 // Increased from 10 to 20 seconds
   }
 });
 
-// Add a connection health check function
-export const checkSupabaseConnection = async () => {
+// Improved connection health check function with retry logic
+export const checkSupabaseConnection = async (retries = 2): Promise<{success: boolean; error?: any}> => {
   try {
-    const { data, error } = await supabase.from('profiles').select('id').limit(1).maybeSingle();
-    return { success: !error, error };
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        // Add small delay between retries
+        if (attempt > 0) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
+        
+        console.log(`Checking database connection, attempt ${attempt + 1}/${retries + 1}`);
+        const { data, error } = await supabase.from('profiles').select('id').limit(1).maybeSingle();
+        
+        if (!error) {
+          console.log('Database connection successful');
+          return { success: true };
+        }
+        
+        console.warn(`Connection check failed (attempt ${attempt + 1}/${retries + 1}):`, error);
+        
+        // Don't retry on permission errors, only on network issues
+        if (error.code !== 'PGRST116' && !error.message?.includes('network')) {
+          return { success: false, error };
+        }
+      } catch (err) {
+        console.error(`Connection attempt ${attempt + 1} failed:`, err);
+        // Continue to next retry
+      }
+    }
+    
+    return { success: false, error: new Error(`Connection failed after ${retries + 1} attempts`) };
   } catch (err) {
+    console.error('Unexpected error in checkSupabaseConnection:', err);
     return { success: false, error: err };
   }
 };

@@ -54,34 +54,66 @@ export default function DeliveryRoutesPage() {
   const [activeTab, setActiveTab] = useState("active");
   const [optimizedRoute, setOptimizedRoute] = useState<RouteStop[]>([]);
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   
-  // Fetch delivery assignments
+  // Fetch delivery assignments with improved error handling
   const { data: assignments, isLoading, error, refetch } = useQuery({
     queryKey: ['deliveryAssignments', user?.id],
     queryFn: async () => {
       try {
+        if (!user?.id) {
+          throw new Error('User not authenticated');
+        }
+
+        console.log('Fetching delivery assignments for user:', user.id);
+        
         const { data, error } = await supabase.functions.invoke('delivery_functions', {
           body: {
             action: 'get_delivery_assignments'
           }
         });
         
-        if (error) throw error;
+        if (error) {
+          console.error('Error invoking get_delivery_assignments function:', error);
+          setLoadError(`Failed to load assignments: ${error.message || 'Unknown error'}`);
+          throw error;
+        }
+        
+        if (!data?.assignments) {
+          console.warn('No assignments returned from API');
+          return [];
+        }
         
         // Filter only in-progress assignments
-        return data?.assignments.filter((a: any) => a.status === 'assigned' || a.status === 'in_transit') || [];
+        const filteredAssignments = data.assignments.filter(
+          (a: any) => a.status === 'assigned' || a.status === 'in_transit'
+        );
+        
+        console.log(`Found ${filteredAssignments.length} active assignments`);
+        return filteredAssignments || [];
+        
       } catch (err: any) {
         console.error("Error fetching assignments:", err);
+        setLoadError(err.message || "Failed to load delivery assignments");
         throw new Error(err.message || "Failed to load delivery assignments");
       }
     },
     enabled: !!user?.id,
+    retry: 2,
+    retryDelay: (attemptIndex) => Math.min(1000 * (2 ** attemptIndex), 10000),
+    staleTime: 60000, // 1 minute
   });
 
   // Format address for display
   const formatAddress = (assignment: DeliveryAssignment) => {
     const order = assignment.order;
     return `${order.shipping_address}, ${order.shipping_city}, ${order.shipping_state} ${order.shipping_postal_code}`;
+  };
+  
+  // Retry data loading if it failed
+  const handleRetryLoad = () => {
+    setLoadError(null);
+    refetch();
   };
   
   // Mock function to optimize routes (in a real app, this would use an actual routing algorithm or API)
@@ -199,15 +231,16 @@ export default function DeliveryRoutesPage() {
                   <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
                   <p className="text-gray-500">Loading deliveries...</p>
                 </div>
-              ) : error ? (
+              ) : error || loadError ? (
                 <div className="p-8 text-center text-red-500">
                   <AlertCircle className="h-12 w-12 mx-auto mb-4" />
-                  <p>Error loading deliveries. Please try again.</p>
+                  <p>Error loading deliveries: {loadError || 'Failed to fetch data'}</p>
                   <Button 
                     variant="outline"
                     className="mt-4"
-                    onClick={() => refetch()}
+                    onClick={handleRetryLoad}
                   >
+                    <RefreshCw className="mr-2 h-4 w-4" />
                     Retry
                   </Button>
                 </div>
@@ -218,6 +251,12 @@ export default function DeliveryRoutesPage() {
                   <p className="text-gray-500 mb-4">
                     You don't have any active deliveries to plan a route for.
                   </p>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => window.location.href = '/delivery/available'}
+                  >
+                    View Available Orders
+                  </Button>
                 </div>
               ) : (
                 <Table>

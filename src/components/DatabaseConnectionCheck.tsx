@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, checkSupabaseConnection } from '@/integrations/supabase/client';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { RefreshCw, AlertCircle, CheckCircle, Database, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { PostgrestError } from '@supabase/supabase-js';
 
 interface ApiResult {
-  error?: PostgrestError;
+  error?: PostgrestError | Error | unknown;
   data?: any;
 }
 
@@ -21,44 +21,40 @@ export function DatabaseConnectionCheck() {
   const { isAuthenticated } = useAuth();
   const { toast } = useToast();
 
-  // Add a timeout control for the database connection checks
+  // Improved connection check with better timeout handling
   const checkConnectionWithTimeout = async () => {
     setStatus('checking');
     setErrorDetails(null);
     setIsRetrying(true);
     setCheckCount(prev => prev + 1);
     
-    // Create a timeout promise that rejects after 5 seconds
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Connection timed out after 5 seconds')), 5000);
-    });
-    
     try {
-      console.log(`Attempt #${checkCount + 1} to check database connection`);
+      console.log(`Database check attempt #${checkCount + 1}`);
       
-      // Use Promise.race to implement timeout
-      const apiCheckPromise = supabase.from('profiles').select('id').limit(1);
-      const apiResult = await Promise.race([apiCheckPromise, timeoutPromise]) as ApiResult;
+      // Use improved connection check function with retries
+      const { success, error } = await checkSupabaseConnection();
       
-      if (apiResult.error) {
-        console.warn('API connectivity test failed:', apiResult.error);
-        throw apiResult.error;
-      } else {
-        console.log('API connectivity test successful');
-      }
-      
-      // Simple query to test database connectivity with timeout
-      const dbCheckPromise = supabase.from('profiles').select('id').limit(1);
-      const dbResult = await Promise.race([dbCheckPromise, timeoutPromise]) as ApiResult;
-      
-      if (dbResult.error) {
-        console.error('Database connection error:', dbResult.error);
+      if (!success) {
+        console.warn('Database connection failed:', error);
         setStatus('error');
-        setErrorDetails(dbResult.error.message || 'Unknown database error');
         
-        // Check if this is a network error
-        if (dbResult.error.message?.includes('network') || dbResult.error.code === 'NETWORK_ERROR') {
-          setErrorDetails('Network error: Unable to reach the database. Please check your internet connection.');
+        // Provide more specific error messages based on error type
+        if (error instanceof Error) {
+          setErrorDetails(error.message);
+        } else if (typeof error === 'object' && error !== null) {
+          const pgError = error as PostgrestError;
+          setErrorDetails(pgError.message || pgError.details || 'Unknown database error');
+          
+          // Check if this is a network error
+          if (pgError.message?.includes('network') || pgError.code === 'NETWORK_ERROR') {
+            setErrorDetails('Network error: Unable to reach the database. Please check your internet connection.');
+          }
+          // Check if this is an authentication error
+          else if (pgError.code === '401' || pgError.code === '403') {
+            setErrorDetails('Authentication error: Unable to access the database. Please log out and back in.');
+          }
+        } else {
+          setErrorDetails('Unknown error connecting to database');
         }
 
         // Notify user about connection issues
@@ -96,19 +92,27 @@ export function DatabaseConnectionCheck() {
     }
   };
 
-  // More aggressive auto retry logic for connection issues
+  // More aggressive auto retry logic with smarter backoff
   useEffect(() => {
     // Only auto-retry if we're already authenticated or it's an error
-    if ((status === 'error' || !status) && !isRetrying && checkCount < 5) {
-      const retryDelay = Math.min(1000 * (checkCount + 1), 5000); // Exponential backoff with a max of 5 seconds
-      
-      console.log(`Scheduling auto-retry #${checkCount + 1} in ${retryDelay}ms`);
-      const retryTimer = setTimeout(() => {
-        console.log(`Auto-retrying connection check (#${checkCount + 1})`);
-        checkConnectionWithTimeout();
-      }, retryDelay);
-      
-      return () => clearTimeout(retryTimer);
+    if ((status === 'error' || !status) && !isRetrying) {
+      // Calculate backoff delay with upper limit and random jitter for better distribution
+      const maxRetries = 8;
+      if (checkCount < maxRetries) {
+        const baseDelay = Math.min(1000 * (1.5 ** checkCount), 15000); 
+        const jitter = Math.random() * 1000;
+        const retryDelay = baseDelay + jitter;
+        
+        console.log(`Scheduling auto-retry #${checkCount + 1} in ${Math.round(retryDelay)}ms`);
+        const retryTimer = setTimeout(() => {
+          console.log(`Auto-retrying connection check (#${checkCount + 1})`);
+          checkConnectionWithTimeout();
+        }, retryDelay);
+        
+        return () => clearTimeout(retryTimer);
+      } else {
+        console.log(`Reached maximum retry attempts (${maxRetries})`);
+      }
     }
   }, [status, isRetrying, checkCount, isAuthenticated]);
 
@@ -120,7 +124,7 @@ export function DatabaseConnectionCheck() {
       if (!isRetrying && status === 'error') {
         checkConnectionWithTimeout();
       }
-    }, 10000); // Check every 10 seconds if we're in error state
+    }, 15000); // Check every 15 seconds if we're in error state
     
     return () => clearInterval(checkInterval);
   }, []);
