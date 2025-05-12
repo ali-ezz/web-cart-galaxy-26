@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/context/CartContext';
 import { Heart, ShoppingCart, Star } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 export interface Product {
   id: string;
@@ -14,8 +15,8 @@ export interface Product {
   rating: number;
   reviews: number;
   category: string;
-  description: string;  // Added this field
-  stock: number;        // Added this field
+  description: string;
+  stock: number;
 }
 
 interface ProductCardProps {
@@ -24,6 +25,7 @@ interface ProductCardProps {
 
 export function ProductCard({ product }: ProductCardProps) {
   const { addToCart } = useCart();
+  const { toast } = useToast();
   
   const {
     id,
@@ -33,10 +35,40 @@ export function ProductCard({ product }: ProductCardProps) {
     imageUrl,
     rating,
     reviews,
-    category
+    category,
+    stock
   } = product;
 
   const discount = discountedPrice ? Math.round((1 - discountedPrice / price) * 100) : 0;
+  
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (stock > 0) {
+      addToCart(id);
+      toast({
+        title: "Added to cart",
+        description: `${name} has been added to your cart`,
+      });
+    } else {
+      toast({
+        title: "Cannot add to cart",
+        description: "This item is out of stock",
+        variant: "destructive"
+      });
+    }
+  };
+  
+  const handleAddToWishlist = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    toast({
+      title: "Added to wishlist",
+      description: `${name} has been added to your wishlist`,
+    });
+  };
 
   return (
     <div className="group bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
@@ -49,12 +81,13 @@ export function ProductCard({ product }: ProductCardProps) {
         <button 
           className="absolute top-2 right-2 bg-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
           aria-label="Add to wishlist"
+          onClick={handleAddToWishlist}
         >
           <Heart className="w-4 h-4 text-gray-600 hover:text-red-500" />
         </button>
         <Link to={`/product/${id}`}>
           <img 
-            src={`${imageUrl}?w=300&h=300&auto=format&fit=crop`} 
+            src={imageUrl}
             alt={name}
             className="absolute w-full h-full object-cover object-center transition-transform group-hover:scale-105"
           />
@@ -96,7 +129,7 @@ export function ProductCard({ product }: ProductCardProps) {
             size="sm" 
             variant="ghost"
             className="p-2 h-auto"
-            onClick={() => addToCart(id)}
+            onClick={handleAddToCart}
             aria-label="Add to cart"
           >
             <ShoppingCart className="w-4 h-4" />

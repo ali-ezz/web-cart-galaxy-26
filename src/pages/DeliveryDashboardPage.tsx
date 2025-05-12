@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -15,6 +14,7 @@ import {
   Truck, 
   ChevronRight,
   BarChart3,
+  LogOut
 } from 'lucide-react';
 import { DatabaseConnectionCheck } from '@/components/DatabaseConnectionCheck';
 
@@ -25,7 +25,7 @@ interface DeliveryStats {
 }
 
 export default function DeliveryDashboardPage() {
-  const { user, userRole } = useAuth();
+  const { user, userRole, logout } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -62,6 +62,11 @@ export default function DeliveryDashboardPage() {
     },
     enabled: !!user?.id && userRole === 'delivery',
   });
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
 
   const deliveryMenuItems = [
     {
@@ -103,8 +108,20 @@ export default function DeliveryDashboardPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold">Delivery Dashboard</h1>
-        <p className="text-gray-600 mt-1">Manage your deliveries and track progress</p>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+          <div className="mb-4 md:mb-0">
+            <h1 className="text-3xl font-bold">Delivery Dashboard</h1>
+            <p className="text-gray-600 mt-1">Manage your deliveries and track progress</p>
+          </div>
+          <Button
+            variant="outline"
+            className="border-shop-purple text-shop-purple hover:bg-shop-purple hover:text-white"
+            onClick={handleLogout}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Sign Out
+          </Button>
+        </div>
       </div>
 
       {/* Database Connection Check */}

@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -14,15 +13,11 @@ import {
   Plus,
   ShoppingBag,
   Star,
-  AlertCircle
+  AlertCircle,
+  LogOut
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-
-interface SellerSummary {
-  totalSales: number;
-  activeProducts: number;
-  pendingOrders: number;
-}
+import { DatabaseConnectionCheck } from '@/components/DatabaseConnectionCheck';
 
 // Type for the response from the edge function
 interface SellerSalesResponse {
@@ -35,7 +30,7 @@ interface PendingOrdersResponse {
 }
 
 export default function SellerDashboardPage() {
-  const { user, userRole } = useAuth();
+  const { user, userRole, logout } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [hasError, setHasError] = useState(false);
@@ -143,6 +138,11 @@ export default function SellerDashboardPage() {
     }
   }, [error, toast]);
   
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
+
   if (!user || (userRole !== 'seller' && userRole !== undefined)) {
     return null; // Don't render anything while redirecting
   }
@@ -256,8 +256,25 @@ export default function SellerDashboardPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold">Seller Dashboard</h1>
-        <p className="text-gray-600 mt-1">Manage your products and sales</p>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+          <div className="mb-4 md:mb-0">
+            <h1 className="text-3xl font-bold">Seller Dashboard</h1>
+            <p className="text-gray-600 mt-1">Manage your products and sales</p>
+          </div>
+          <Button
+            variant="outline"
+            className="border-shop-purple text-shop-purple hover:bg-shop-purple hover:text-white"
+            onClick={handleLogout}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Sign Out
+          </Button>
+        </div>
+      </div>
+      
+      {/* Database Connection Check */}
+      <div className="mb-8">
+        <DatabaseConnectionCheck />
       </div>
       
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
