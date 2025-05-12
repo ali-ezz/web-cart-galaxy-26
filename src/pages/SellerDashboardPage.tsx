@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -27,6 +28,13 @@ interface SellerSalesResponse {
 // Type for the pending orders response
 interface PendingOrdersResponse {
   count: number;
+}
+
+// Define the SellerSummary interface
+interface SellerSummary {
+  totalSales: number;
+  activeProducts: number;
+  pendingOrders: number;
 }
 
 export default function SellerDashboardPage() {

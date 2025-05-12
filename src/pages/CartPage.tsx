@@ -16,15 +16,20 @@ import { toast } from '@/hooks/use-toast';
 
 export default function CartPage() {
   const { 
-    cartProducts, 
+    cartItems, 
     cartCount, 
-    cartTotal, 
-    updateQuantity, 
     removeFromCart,
+    updateQuantity,
     clearCart 
   } = useCart();
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  
+  // Calculate cart total from cartItems
+  const cartTotal = cartItems.reduce((total, item) => {
+    const itemPrice = item.discounted_price || item.price;
+    return total + (itemPrice * item.quantity);
+  }, 0);
 
   const handleCheckout = () => {
     if (!isAuthenticated) {
@@ -66,12 +71,12 @@ export default function CartPage() {
           <div className="lg:col-span-2">
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
               <div className="divide-y divide-gray-200">
-                {cartProducts.map((item) => (
+                {cartItems.map((item) => (
                   <div key={item.id} className="p-4 sm:p-6 flex flex-col sm:flex-row">
                     {/* Product image */}
                     <div className="w-full sm:w-32 h-32 flex-shrink-0 mb-4 sm:mb-0">
                       <img
-                        src={`${item.imageUrl}?w=200&h=200&auto=format&fit=crop`}
+                        src={item.image_url || '/placeholder.svg'}
                         alt={item.name}
                         className="w-full h-full object-cover rounded-md"
                       />
@@ -82,14 +87,13 @@ export default function CartPage() {
                       <div className="flex flex-col sm:flex-row sm:justify-between">
                         <div>
                           <h3 className="font-medium text-gray-900">
-                            <Link to={`/product/${item.id}`} className="hover:text-shop-purple">
+                            <Link to={`/product/${item.product_id}`} className="hover:text-shop-purple">
                               {item.name}
                             </Link>
                           </h3>
-                          <p className="mt-1 text-sm text-gray-500">{item.category}</p>
                         </div>
                         <div className="mt-2 sm:mt-0 font-medium text-gray-900">
-                          ${((item.discountedPrice || item.price) * item.quantity).toFixed(2)}
+                          ${((item.discounted_price || item.price) * item.quantity).toFixed(2)}
                         </div>
                       </div>
                       
@@ -100,7 +104,7 @@ export default function CartPage() {
                             variant="outline" 
                             size="icon" 
                             className="h-8 w-8 rounded-r-none"
-                            onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                            onClick={() => updateQuantity(item.product_id, item.quantity - 1)}
                           >
                             <Minus className="h-3 w-3" />
                           </Button>
@@ -111,8 +115,7 @@ export default function CartPage() {
                             variant="outline" 
                             size="icon" 
                             className="h-8 w-8 rounded-l-none"
-                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                            disabled={item.quantity >= item.stock}
+                            onClick={() => updateQuantity(item.product_id, item.quantity + 1)}
                           >
                             <Plus className="h-3 w-3" />
                           </Button>
@@ -122,7 +125,7 @@ export default function CartPage() {
                         <Button 
                           variant="ghost" 
                           size="sm" 
-                          onClick={() => removeFromCart(item.id)}
+                          onClick={() => removeFromCart(item.product_id)}
                           className="text-gray-600 hover:text-red-600"
                         >
                           <Trash2 className="h-4 w-4 mr-1" />
