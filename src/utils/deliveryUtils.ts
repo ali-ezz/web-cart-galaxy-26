@@ -33,6 +33,7 @@ export const fetchWeeklySchedule = async (userId: string): Promise<TimeSlot[]> =
     }
     
     if (!data || data.length === 0) {
+      console.log("No weekly schedule found, using default");
       return getDefaultWeeklySchedule();
     }
     
@@ -82,6 +83,7 @@ export const saveWeeklySchedule = async (userId: string, schedule: TimeSlot[]): 
       return false;
     }
     
+    console.log("Successfully saved weekly schedule");
     return true;
   } catch (error) {
     console.error("Error saving weekly schedule:", error);
@@ -103,10 +105,23 @@ export const fetchDeliverySlots = async (
     // Get delivery assignments for this person
     const { data: assignments, error: assignmentsError } = await supabase
       .from('delivery_assignments')
-      .select('*, orders:order_id(*)')
+      .select(`
+        id,
+        order_id,
+        assigned_at,
+        delivered_at,
+        status,
+        orders:order_id (
+          id,
+          shipping_address,
+          shipping_city,
+          shipping_state,
+          shipping_postal_code
+        )
+      `)
       .eq('delivery_person_id', userId)
-      .gte('created_at', formattedStartDate)
-      .lte('created_at', formattedEndDate);
+      .gte('assigned_at', formattedStartDate)
+      .lte('assigned_at', formattedEndDate);
     
     if (assignmentsError) {
       console.error("Error fetching assignments:", assignmentsError);

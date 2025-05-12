@@ -45,26 +45,37 @@ export default function AvailableOrdersPage() {
   const { data: orders, isLoading, error } = useQuery({
     queryKey: ['availableOrders'],
     queryFn: async () => {
-      // Use edge function to get available orders
-      const { data, error } = await supabase.functions.invoke('delivery_functions', {
-        body: { action: 'get_available_orders' }
-      });
-      
-      if (error) throw error;
-      return data.orders as Order[];
+      try {
+        console.log("Fetching available orders");
+        // Use edge function to get available orders
+        const { data, error } = await supabase.functions.invoke('delivery_functions', {
+          body: { action: 'get_available_orders' }
+        });
+        
+        if (error) {
+          console.error("Error fetching available orders:", error);
+          throw error;
+        }
+        
+        console.log("Available orders received:", data);
+        return data.orders as Order[];
+      } catch (err) {
+        console.error("Error in get_available_orders:", err);
+        throw err;
+      }
     },
     enabled: !!user?.id,
   });
 
-  // Mutation for accepting an order
+  // Mutation for accepting an order - Fixed action name from accept_delivery_order to accept_order
   const acceptOrderMutation = useMutation({
     mutationFn: async (orderId: string) => {
+      console.log("Accepting order:", orderId);
       // Use edge function to accept an order
       const { data, error } = await supabase.functions.invoke('delivery_functions', {
         body: { 
-          action: 'accept_delivery_order',
-          order_id: orderId,
-          delivery_person_id: user!.id
+          action: 'accept_order',
+          orderId: orderId
         }
       });
       
@@ -82,6 +93,7 @@ export default function AvailableOrdersPage() {
       });
     },
     onError: (error: any) => {
+      console.error("Error accepting order:", error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to accept the order',
@@ -118,6 +130,9 @@ export default function AvailableOrdersPage() {
           <div className="p-8 text-center text-red-500">
             <AlertCircle className="h-12 w-12 mx-auto mb-4" />
             <p>Error loading orders. Please try again.</p>
+            <pre className="mt-4 text-xs text-red-400 bg-red-50 p-2 rounded overflow-auto max-w-full">
+              {JSON.stringify(error, null, 2)}
+            </pre>
           </div>
         ) : !orders || orders.length === 0 ? (
           <div className="p-8 text-center">

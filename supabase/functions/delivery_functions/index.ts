@@ -46,6 +46,8 @@ serve(async (req) => {
     // Parse the request body
     const { action, ...params } = await req.json();
 
+    console.log("Delivery function called with action:", action, "params:", params);
+
     // Handle different actions
     switch (action) {
       case 'get_delivery_stats':
@@ -88,23 +90,29 @@ async function getDeliveryStats(supabase, userId, corsHeaders) {
   console.log("Getting delivery stats for id:", userId);
   
   try {
-    // Get completed deliveries count
-    const { data: deliveredData, error: deliveredError } = await supabase
+    // Get completed deliveries count - Fixed the query syntax
+    const { count: deliveredCount, error: deliveredError } = await supabase
       .from('delivery_assignments')
-      .select('id')
+      .select('*', { count: 'exact', head: true })
       .eq('delivery_person_id', userId)
       .eq('status', 'delivered');
     
-    if (deliveredError) throw deliveredError;
+    if (deliveredError) {
+      console.error("Error fetching completed deliveries:", deliveredError);
+      throw deliveredError;
+    }
     
-    // Get in-progress deliveries count
-    const { data: inProgressData, error: inProgressError } = await supabase
+    // Get in-progress deliveries count - Fixed the query syntax
+    const { count: inProgressCount, error: inProgressError } = await supabase
       .from('delivery_assignments')
-      .select('id')
+      .select('*', { count: 'exact', head: true })
       .eq('delivery_person_id', userId)
       .eq('status', 'assigned');
     
-    if (inProgressError) throw inProgressError;
+    if (inProgressError) {
+      console.error("Error fetching in-progress deliveries:", inProgressError);
+      throw inProgressError;
+    }
     
     // Get recent deliveries (limited to 5)
     const { data: recentDeliveries, error: recentError } = await supabase
@@ -115,14 +123,19 @@ async function getDeliveryStats(supabase, userId, corsHeaders) {
       .order('delivered_at', { ascending: false })
       .limit(5);
     
-    if (recentError) throw recentError;
+    if (recentError) {
+      console.error("Error fetching recent deliveries:", recentError);
+      throw recentError;
+    }
     
     // Return the stats
     const stats = {
-      total_delivered: deliveredData?.length || 0,
-      in_progress: inProgressData?.length || 0,
+      total_delivered: deliveredCount || 0,
+      in_progress: inProgressCount || 0,
       recent_deliveries: recentDeliveries || [],
     };
+    
+    console.log("Delivery stats:", stats);
     
     return new Response(
       JSON.stringify({ stats }),
@@ -162,10 +175,12 @@ async function getAvailableOrders(supabase, userId, corsHeaders) {
         )
       `)
       .eq('status', 'paid')
-      .eq('delivery_status', 'pending')
-      .not('id', 'in', supabase.from('delivery_assignments').select('order_id'));
+      .eq('delivery_status', 'pending');
     
-    if (ordersError) throw ordersError;
+    if (ordersError) {
+      console.error("Error fetching available orders:", ordersError);
+      throw ordersError;
+    }
     
     console.log(`Found ${availableOrders?.length || 0} available orders`);
     
@@ -185,6 +200,8 @@ async function getAvailableOrders(supabase, userId, corsHeaders) {
 
 // Accept an order for delivery
 async function acceptOrder(supabase, userId, orderId, corsHeaders) {
+  console.log("Accepting order:", orderId, "for user:", userId);
+  
   if (!orderId) {
     return new Response(
       JSON.stringify({ error: 'Order ID is required' }),
@@ -203,6 +220,7 @@ async function acceptOrder(supabase, userId, orderId, corsHeaders) {
       .single();
     
     if (orderError || !order) {
+      console.error("Order not found or not available:", orderError);
       return new Response(
         JSON.stringify({ error: 'Order not found or not available for delivery' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
@@ -216,7 +234,10 @@ async function acceptOrder(supabase, userId, orderId, corsHeaders) {
       .eq('order_id', orderId)
       .maybeSingle();
     
-    if (assignmentError) throw assignmentError;
+    if (assignmentError) {
+      console.error("Error checking existing assignment:", assignmentError);
+      throw assignmentError;
+    }
     
     if (existingAssignment) {
       return new Response(
@@ -237,7 +258,10 @@ async function acceptOrder(supabase, userId, orderId, corsHeaders) {
       .select()
       .single();
     
-    if (createError) throw createError;
+    if (createError) {
+      console.error("Error creating assignment:", createError);
+      throw createError;
+    }
     
     // Update the order's delivery status
     const { error: updateError } = await supabase
@@ -245,7 +269,10 @@ async function acceptOrder(supabase, userId, orderId, corsHeaders) {
       .update({ delivery_status: 'assigned' })
       .eq('id', orderId);
     
-    if (updateError) throw updateError;
+    if (updateError) {
+      console.error("Error updating order status:", updateError);
+      throw updateError;
+    }
     
     return new Response(
       JSON.stringify({ success: true, assignment: newAssignment }),
@@ -336,13 +363,18 @@ async function saveSchedule(supabase, userId, schedule, corsHeaders) {
   }
   
   try {
+    console.log("Saving schedule for user:", userId, "Schedule:", schedule);
+    
     // Delete existing schedule entries
     const { error: deleteError } = await supabase
       .from('delivery_schedules')
       .delete()
       .eq('delivery_person_id', userId);
     
-    if (deleteError) throw deleteError;
+    if (deleteError) {
+      console.error("Error deleting existing schedules:", deleteError);
+      throw deleteError;
+    }
     
     // Insert new schedule entries
     const scheduleData = schedule.map(slot => ({
@@ -357,7 +389,10 @@ async function saveSchedule(supabase, userId, schedule, corsHeaders) {
       .from('delivery_schedules')
       .insert(scheduleData);
     
-    if (insertError) throw insertError;
+    if (insertError) {
+      console.error("Error inserting schedules:", insertError);
+      throw insertError;
+    }
     
     return new Response(
       JSON.stringify({ success: true }),
@@ -376,12 +411,17 @@ async function saveSchedule(supabase, userId, schedule, corsHeaders) {
 // Get a delivery person's schedule
 async function getSchedule(supabase, userId, corsHeaders) {
   try {
+    console.log("Getting schedule for user:", userId);
+    
     const { data, error } = await supabase
       .from('delivery_schedules')
       .select('*')
       .eq('delivery_person_id', userId);
     
-    if (error) throw error;
+    if (error) {
+      console.error("Error fetching schedule:", error);
+      throw error;
+    }
     
     // Convert to the format expected by the frontend
     const schedule = (data || []).map(item => ({

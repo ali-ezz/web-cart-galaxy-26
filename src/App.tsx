@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/context/AuthContext';
 import { CartProvider } from '@/context/CartContext';
@@ -18,6 +18,7 @@ import DeliveryAssignmentsPage from '@/pages/delivery/DeliveryAssignmentsPage';
 import DeliveryRoutesPage from '@/pages/delivery/DeliveryRoutesPage';
 import DeliveryEarningsPage from '@/pages/delivery/DeliveryEarningsPage';
 import CartPage from '@/pages/CartPage';
+import AvailableOrdersPage from '@/pages/delivery/AvailableOrdersPage';
 // Add other imports as needed
 
 // Create a client for React Query
@@ -51,12 +52,13 @@ function App() {
                   <Route path="/delivery/assignments" element={<DeliveryAssignmentsPage />} />
                   <Route path="/delivery/routes" element={<DeliveryRoutesPage />} />
                   <Route path="/delivery/earnings" element={<DeliveryEarningsPage />} />
+                  <Route path="/delivery/available" element={<AvailableOrdersPage />} />
                   <Route path="/account" element={<AccountPage />} />
                   <Route path="/cart" element={<CartPage />} />
-                  {/* Add other routes as needed */}
+                  {/* Redirect for invalid routes */}
+                  <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </main>
-              {/* Footer removed as requested */}
             </div>
             <Toaster />
           </Router>
