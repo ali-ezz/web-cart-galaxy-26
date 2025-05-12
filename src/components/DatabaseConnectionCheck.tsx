@@ -22,8 +22,8 @@ export function DatabaseConnectionCheck() {
     try {
       console.log(`Attempt #${checkCount + 1} to check database connection`);
       
-      // First check if we can connect to Supabase API
-      const { data: apiData, error: apiError } = await supabase.from('_http_test').select('*').limit(1);
+      // First check if we can connect to Supabase API - using a basic query instead of _http_test
+      const { data: apiData, error: apiError } = await supabase.from('profiles').select('count').limit(1);
       
       if (apiError) {
         console.warn('API connectivity test failed:', apiError);
