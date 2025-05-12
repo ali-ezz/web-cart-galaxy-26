@@ -6,13 +6,9 @@ import { Card, CardContent } from '@/components/ui/card';
 export function UserRoleDebug() {
   const auth = useAuth();
   
-  // Safely access debugAuthState if it exists
+  // Create a safe debug state object without relying on debugAuthState
   const getDebugState = () => {
-    if (typeof auth.debugAuthState === 'function') {
-      return auth.debugAuthState();
-    }
-    
-    // Fallback if debugAuthState doesn't exist
+    // Return basic auth state information
     return {
       user: auth.user,
       isAuthenticated: auth.isAuthenticated,

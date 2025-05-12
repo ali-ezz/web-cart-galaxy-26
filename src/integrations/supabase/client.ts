@@ -18,9 +18,9 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     flowType: 'pkce' // Use PKCE flow for better OAuth security
   },
   global: {
-    fetch: (...args) => {
+    fetch: (url, options) => {
       // Custom fetch with timeout
-      const fetchPromise = fetch(...args);
+      const fetchPromise = fetch(url, options);
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Connection timed out')), 15000); // 15 second timeout
       });

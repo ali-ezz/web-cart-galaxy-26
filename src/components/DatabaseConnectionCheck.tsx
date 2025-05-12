@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -28,7 +29,7 @@ export function DatabaseConnectionCheck() {
     setCheckCount(prev => prev + 1);
     
     // Create a timeout promise that rejects after 5 seconds
-    const timeoutPromise = new Promise((_, reject) => {
+    const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('Connection timed out after 5 seconds')), 5000);
     });
     
