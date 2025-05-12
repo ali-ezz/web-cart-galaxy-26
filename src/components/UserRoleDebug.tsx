@@ -13,8 +13,10 @@ export function UserRoleDebug() {
       user: auth.user ? {
         id: auth.user.id,
         email: auth.user.email,
-        name: auth.user.user_metadata?.name || auth.user.email?.split('@')[0] || 'Anonymous',
-        metadata: auth.user.user_metadata
+        // Use optional chaining to safely access user metadata
+        name: auth.user.name || auth.user.email?.split('@')[0] || 'Anonymous',
+        // Only include metadata if available in the debugState
+        ...(auth.session?.user?.user_metadata ? { metadata: auth.session.user.user_metadata } : {})
       } : null,
       isAuthenticated: auth.isAuthenticated,
       authState: auth.authState,
