@@ -1,21 +1,27 @@
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Session, User as AuthUser } from "@supabase/supabase-js";
 import { Database } from "@/integrations/supabase/types";
-import { verifyUserConsistency, repairUserEntries } from "@/utils/authUtils";
+import { useNavigate } from "react-router-dom";
 
 // Define our own User type to match what we get from Supabase
 interface User {
   id: string;
   name: string;
   email: string;
-  role?: string;
 }
 
 // Extract the user_role type from Database type definition
 type UserRole = Database["public"]["Enums"]["user_role"];
+
+// Define the states for the authentication process
+type AuthState = 
+  | 'initializing' 
+  | 'authenticated' 
+  | 'unauthenticated'
+  | 'error';
 
 interface AuthContextType {
   user: User | null;
@@ -29,36 +35,45 @@ interface AuthContextType {
   userRole: string | null;
   fetchUserRole: (userId: string) => Promise<string | null>;
   sendPasswordResetEmail: (email: string) => Promise<boolean>;
-  debugAuthState: () => any;
+  authState: AuthState;
+  clearAuthErrors: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Function to extract user name from user metadata with fallbacks
+const extractUserName = (user: AuthUser): string => {
+  return user.user_metadata?.name || 
+         user.user_metadata?.full_name || 
+         user.user_metadata?.preferred_username || 
+         user.email?.split('@')[0] || 
+         'User';
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  // Core auth state
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [roleLoading, setRoleLoading] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [authState, setAuthState] = useState<AuthState>('initializing');
+  const [authError, setAuthError] = useState<string | null>(null);
+  
+  // Tracking variables
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [roleFetchAttempts, setRoleFetchAttempts] = useState(0);
+  
   const { toast } = useToast();
 
-  // Return all auth state for debugging purposes
-  const debugAuthState = () => {
-    return {
-      user,
-      session,
-      isAuthenticated,
-      loading,
-      roleLoading,
-      userRole,
-      roleFetchAttempts
-    };
+  // Clear any authentication errors
+  const clearAuthErrors = () => {
+    setAuthError(null);
   };
 
   // Enhanced function to fetch user role with improved error handling and SSO support
-  const fetchUserRole = async (userId: string): Promise<string | null> => {
+  const fetchUserRole = useCallback(async (userId: string): Promise<string | null> => {
     if (!userId) {
       console.warn("fetchUserRole called with no userId");
       return null;
@@ -79,42 +94,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         console.error("Error fetching user role:", error);
         
+        // If no role found, try automatic repair
         if (error.code === 'PGRST116') {
-          console.warn(`No role found for user ${userId}, triggering repair`);
+          console.warn(`No role found for user ${userId}, creating default role`);
           
-          // Use the repair function to ensure both role and profile exist
-          const isRepaired = await repairUserEntries(userId);
-          
-          if (!isRepaired) {
-            console.error("Failed to repair user data");
-            toast({
-              title: "Account issue detected",
-              description: "Could not set user role. Try the Repair button on the login page.",
-              variant: "destructive",
-            });
-            return 'customer'; // Default role as fallback
-          }
-          
-          // Try fetching the role again after repair
-          const { data: retrievedData, error: retrievedError } = await supabase
+          // Create a default role for the user
+          const { error: insertError } = await supabase
             .from('user_roles')
-            .select('role')
-            .eq('user_id', userId)
-            .maybeSingle();
+            .insert({ user_id: userId, role: 'customer' });
             
-          if (retrievedError || !retrievedData) {
-            console.error("Still could not get role after repair:", retrievedError);
-            toast({
-              title: "Default Role Assigned",
-              description: "Using customer role as default. Role assignment failed."
-            });
-            setUserRole('customer');
-            return 'customer';
+          if (insertError) {
+            console.error("Failed to create default role:", insertError);
+            return null;
           }
           
-          console.log(`Role successfully retrieved after repair: ${retrievedData.role}`);
-          setUserRole(retrievedData.role);
-          return retrievedData.role;
+          setUserRole('customer');
+          return 'customer';
         }
         
         return null;
@@ -125,32 +120,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUserRole(data.role);
         return data.role;
       } else {
-        console.log(`No role data for user ${userId}, verifying consistency`);
+        console.log(`No role data for user ${userId}, creating default role`);
         
-        // Run a verification to ensure both profile and role are created
-        const isConsistent = await verifyUserConsistency(userId);
-        
-        if (!isConsistent) {
-          console.warn("User data consistency issues detected");
+        // Create a default role for the user if none exists
+        const { error: insertError } = await supabase
+          .from('user_roles')
+          .insert({ user_id: userId, role: 'customer' });
           
-          // Try again after verification
-          const { data: retryData, error: retryError } = await supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', userId)
-            .maybeSingle();
-            
-          if (retryError || !retryData) {
-            toast({
-              title: "Default Role Assigned",
-              description: "You've been assigned a customer role by default."
-            });
-            setUserRole('customer');
-            return 'customer';
-          }
-          
-          setUserRole(retryData.role);
-          return retryData.role;
+        if (insertError) {
+          console.error("Failed to create default role:", insertError);
+          return null;
         }
         
         setUserRole('customer');
@@ -162,146 +141,100 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setRoleLoading(false);
     }
-  };
+  }, []);
 
+  // Simplified auth state initialization
   useEffect(() => {
     console.log("Setting up auth state listener");
     
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, currentSession) => {
-        console.log(`Auth state change: ${event}`, currentSession?.user?.id || 'No user');
-        
-        // Always update the session state
-        setSession(currentSession);
-        
-        if (currentSession?.user) {
-          // Extract name from metadata with fallbacks for SSO providers
-          const userName = currentSession.user.user_metadata?.name || 
-                          currentSession.user.user_metadata?.full_name || 
-                          currentSession.user.user_metadata?.preferred_username || 
-                          currentSession.user.email?.split('@')[0] || 
-                          'User';
-          
-          const userData = {
-            id: currentSession.user.id,
-            name: userName,
-            email: currentSession.user.email || '',
-          };
-          
-          setUser(userData);
-          setIsAuthenticated(true);
-          setRoleFetchAttempts(0);
-          
-          // Handle SSO signup events
-          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-            // Verify user consistency on auth state change
-            try {
-              // Verify and repair user data if needed
-              const isConsistent = await verifyUserConsistency(currentSession.user.id);
-              if (isConsistent) {
-                // If consistent, fetch the role
+    const initializeAuth = async () => {
+      try {
+        // Set up auth state listener FIRST
+        const { data: authListener } = supabase.auth.onAuthStateChange(
+          async (event, currentSession) => {
+            console.log(`Auth state change: ${event}`, currentSession?.user?.id || 'No user');
+            
+            // Always update the session state
+            setSession(currentSession);
+            
+            if (currentSession?.user) {
+              // Extract user info
+              const userName = extractUserName(currentSession.user);
+              
+              const userData = {
+                id: currentSession.user.id,
+                name: userName,
+                email: currentSession.user.email || '',
+              };
+              
+              setUser(userData);
+              setIsAuthenticated(true);
+              setAuthState('authenticated');
+              setRoleFetchAttempts(0);
+              
+              // Fetch user role if not already loaded
+              if (!userRole) {
                 const role = await fetchUserRole(currentSession.user.id);
                 console.log(`User role after auth state change: ${role}`);
-              } else {
-                console.error("User data is inconsistent");
-                const repaired = await repairUserEntries(currentSession.user.id);
-                if (repaired) {
-                  const role = await fetchUserRole(currentSession.user.id);
-                  console.log(`User role after repair: ${role}`);
-                } else {
-                  toast({
-                    title: "Account issue detected",
-                    description: "There may be a problem with your account data. Please use the Repair button.",
-                    variant: "destructive",
-                  });
-                }
               }
-            } catch (err) {
-              console.error("Error in auth state change handling:", err);
+            } else {
+              setUser(null);
+              setIsAuthenticated(false);
+              setUserRole(null);
+              setAuthState('unauthenticated');
+              setRoleFetchAttempts(0);
             }
           }
-        } else {
-          setUser(null);
-          setIsAuthenticated(false);
-          setUserRole(null);
-          setRoleFetchAttempts(0);
-        }
-      }
-    );
+        );
 
-    // THEN check for existing session with improved error handling
-    const checkExistingSession = async () => {
-      try {
-        const { data: { session: existingSession }, error: sessionError } = await supabase.auth.getSession();
+        // THEN check for existing session
+        const { data, error } = await supabase.auth.getSession();
         
-        if (sessionError) {
-          console.error("Error getting session:", sessionError);
-          setLoading(false);
-          return;
-        }
-        
-        console.log("Checking existing session", existingSession?.user?.id || 'No session');
-        
-        if (existingSession?.user) {
-          try {
-            // Verify the user exists in the database and fix if needed
-            const isConsistent = await verifyUserConsistency(existingSession.user.id);
+        if (error) {
+          console.error("Error getting initial session:", error);
+          setAuthState('error');
+          setAuthError(error.message);
+        } else {
+          if (data.session) {
+            const currentUser = data.session.user;
             
-            if (!isConsistent) {
-              console.warn("User data is inconsistent, will auto-repair");
-              toast({
-                title: "Account verification",
-                description: "We're checking your account data...",
-              });
-              
-              // Attempt to repair automatically
-              await repairUserEntries(existingSession.user.id);
-            }
-            
-            // Extract name from metadata with fallbacks for SSO providers
-            const userName = existingSession.user.user_metadata?.name || 
-                            existingSession.user.user_metadata?.full_name || 
-                            existingSession.user.user_metadata?.preferred_username || 
-                            existingSession.user.email?.split('@')[0] || 
-                            'User';
+            // Extract user info
+            const userName = extractUserName(currentUser);
             
             const userData = {
-              id: existingSession.user.id,
+              id: currentUser.id,
               name: userName,
-              email: existingSession.user.email || '',
+              email: currentUser.email || '',
             };
             
             setUser(userData);
-            setSession(existingSession);
+            setSession(data.session);
             setIsAuthenticated(true);
+            setAuthState('authenticated');
             
-            // Fetch user role immediately
-            const role = await fetchUserRole(existingSession.user.id);
+            // Fetch user role
+            const role = await fetchUserRole(currentUser.id);
             console.log(`Initial role fetch complete: ${role}`);
-          } catch (err) {
-            console.error("Error during session verification:", err);
+          } else {
+            setAuthState('unauthenticated');
           }
         }
         
+        setSessionChecked(true);
         setLoading(false);
       } catch (error) {
-        console.error("Error checking session:", error);
+        console.error("Critical error during auth initialization:", error);
+        setAuthState('error');
         setLoading(false);
       }
     };
     
-    checkExistingSession();
+    initializeAuth();
+  }, [fetchUserRole]);
 
-    return () => {
-      console.log("Cleaning up auth subscription");
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  // Add retry mechanism for role fetching
+  // Add retry mechanism for role fetching with exponential backoff
   useEffect(() => {
-    if (isAuthenticated && user?.id && !userRole && roleFetchAttempts < 3) {
+    if (isAuthenticated && user?.id && !userRole && roleFetchAttempts < 3 && authState === 'authenticated') {
       const fetchRoleWithRetry = async () => {
         try {
           const role = await fetchUserRole(user.id);
@@ -315,17 +248,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       };
       
-      // Wait a bit longer between retries
-      const delay = roleFetchAttempts * 1000;
+      // Wait longer between retries with exponential backoff
+      const delay = Math.min(1000 * Math.pow(2, roleFetchAttempts), 8000);
+      console.log(`Scheduling role fetch retry in ${delay}ms`);
       const timer = setTimeout(fetchRoleWithRetry, delay);
       
       return () => clearTimeout(timer);
     }
-  }, [isAuthenticated, user, userRole, roleFetchAttempts]);
+  }, [isAuthenticated, user, userRole, roleFetchAttempts, authState, fetchUserRole]);
 
+  // Authentication methods
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       setLoading(true);
+      setAuthError(null);
       console.log(`Login attempt: ${email}`);
       
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -335,6 +271,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error("Login error:", error.message);
+        setAuthError(error.message);
         toast({
           title: "Login Failed",
           description: error.message,
@@ -346,37 +283,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data.user) {
         console.log(`Login successful: ${data.user.id}`);
         
-        // Verify user consistency after login
-        const isConsistent = await verifyUserConsistency(data.user.id);
-        
-        if (!isConsistent) {
-          console.warn("User data inconsistency detected during login");
-          
-          // Auto-repair if inconsistency detected
-          const repairResult = await repairUserEntries(data.user.id);
-          
-          if (repairResult) {
-            console.log("Auto-repair successful");
-            toast({
-              title: "Account Issue Fixed",
-              description: "We detected and fixed an issue with your account data.",
-            });
-          } else {
-            console.error("Auto-repair failed");
-            toast({
-              title: "Account Issue",
-              description: "We detected an issue with your account data. Please use the repair option below.",
-              variant: "destructive",
-            });
-          }
-        }
-        
-        // Fetch or create role
-        const role = await fetchUserRole(data.user.id);
-        
         toast({
           title: "Login Successful",
-          description: `Welcome back, ${data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User'}!`,
+          description: `Welcome back, ${extractUserName(data.user)}!`,
         });
         
         return true;
@@ -385,6 +294,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return false;
     } catch (error: any) {
       console.error("Login exception:", error);
+      setAuthError(error.message || "An unexpected error occurred");
       toast({
         title: "Login Failed",
         description: error.message || "An unexpected error occurred",
@@ -405,6 +315,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ): Promise<boolean> => {
     try {
       setLoading(true);
+      setAuthError(null);
+      
       // First register the user
       const { data: authData, error } = await supabase.auth.signUp({
         email,
@@ -419,6 +331,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (error) {
+        setAuthError(error.message);
         toast({
           title: "Registration Failed",
           description: error.message,
@@ -428,34 +341,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (authData.user) {
-        // The trigger we created should handle role creation
-        console.log("User created with role_request in metadata:", role);
-        
-        // But let's verify it after a short delay to give the trigger time to execute
-        setTimeout(async () => {
-          const roleResult = await fetchUserRole(authData.user!.id);
-          if (!roleResult || roleResult !== role) {
-            console.warn(`Role verification failed, got ${roleResult} but expected ${role}`);
-            
-            // Try direct insertion as backup
-            const { error: roleError } = await supabase
-              .from('user_roles')
-              .upsert({ 
-                user_id: authData.user!.id, 
-                role 
-              });
-              
-            if (roleError) {
-              console.error("Could not set user role directly:", roleError);
-            } else {
-              console.log("Successfully set role directly:", role);
-              setUserRole(role);
-            }
-          } else {
-            console.log("Role verification successful:", roleResult);
-          }
-        }, 1000);
-
         // Store role-specific questions if provided
         if (roleQuestions && Object.keys(roleQuestions).length > 0) {
           try {
@@ -463,6 +348,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               .from('profiles')
               .upsert({ 
                 id: authData.user.id,
+                first_name: name.split(' ')[0],
+                last_name: name.split(' ').slice(1).join(' '),
                 question_responses: roleQuestions 
               });
 
@@ -486,6 +373,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return false;
     } catch (error: any) {
+      setAuthError(error.message || "An unexpected error occurred");
       toast({
         title: "Registration Failed",
         description: error.message || "An unexpected error occurred",
@@ -500,11 +388,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const sendPasswordResetEmail = async (email: string): Promise<boolean> => {
     try {
       setLoading(true);
+      setAuthError(null);
+      
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin + '/auth-confirmation',
       });
 
       if (error) {
+        setAuthError(error.message);
         toast({
           title: "Password Reset Failed",
           description: error.message,
@@ -519,6 +410,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       return true;
     } catch (error: any) {
+      setAuthError(error.message || "An unexpected error occurred");
       toast({
         title: "Password Reset Failed",
         description: error.message || "An unexpected error occurred",
@@ -533,6 +425,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     try {
       setLoading(true);
+      setAuthError(null);
+      
       await supabase.auth.signOut();
       
       // Clear all auth state
@@ -541,12 +435,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsAuthenticated(false);
       setUserRole(null);
       setRoleFetchAttempts(0);
+      setAuthState('unauthenticated');
       
       toast({
         title: "Logged out",
         description: "You have been successfully logged out",
       });
     } catch (error: any) {
+      setAuthError(error.message || "An unexpected error occurred");
       toast({
         title: "Logout Failed",
         description: error.message || "An unexpected error occurred",
@@ -570,7 +466,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       userRole,
       fetchUserRole,
       sendPasswordResetEmail,
-      debugAuthState
+      authState,
+      clearAuthErrors
     }}>
       {children}
     </AuthContext.Provider>

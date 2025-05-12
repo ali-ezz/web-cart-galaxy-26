@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, RefreshCw, Key, Shield, RotateCw } from 'lucide-react';
-import { verifyUserConsistency } from '@/utils/authUtils';
 import { supabase } from '@/integrations/supabase/client';
 
 interface LoginTroubleshootingProps {
@@ -14,10 +13,11 @@ interface LoginTroubleshootingProps {
 
 const LoginTroubleshooting: React.FC<LoginTroubleshootingProps> = ({ onRepair }) => {
   const { toast } = useToast();
-  const { user, fetchUserRole, userRole } = useAuth();
+  const { user, fetchUserRole, clearAuthErrors } = useAuth();
   const [isRepairing, setIsRepairing] = React.useState(false);
   const [isRefreshingRole, setIsRefreshingRole] = React.useState(false);
   const [isResettingConnection, setIsResettingConnection] = React.useState(false);
+  const [connectionAttempts, setConnectionAttempts] = React.useState(0);
 
   const handleRepairAccount = async () => {
     if (!user?.id) {
@@ -32,25 +32,50 @@ const LoginTroubleshooting: React.FC<LoginTroubleshootingProps> = ({ onRepair })
     setIsRepairing(true);
     try {
       console.log("Starting account verification for user:", user.id);
-      const isRepaired = await verifyUserConsistency(user.id);
-      if (isRepaired) {
-        toast({
-          title: "Account verified",
-          description: "Your account data has been checked and repaired if needed.",
-        });
+      
+      // Create a default profile if needed
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert({ id: user.id });
         
-        // Refresh role after repair
-        await fetchUserRole(user.id);
-        
-        if (onRepair) {
-          onRepair();
-        }
-      } else {
+      if (profileError) {
+        console.error("Error repairing profile:", profileError);
         toast({
-          title: "Verification failed",
-          description: "Could not verify account data. Try logging out and back in.",
+          title: "Profile repair failed",
+          description: "Could not create or update your profile.",
           variant: "destructive",
         });
+        return;
+      }
+      
+      // Create default role if needed
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .upsert({ 
+          user_id: user.id, 
+          role: 'customer' 
+        });
+        
+      if (roleError) {
+        console.error("Error repairing role:", roleError);
+        toast({
+          title: "Role repair failed",
+          description: "Could not create or update your user role.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      toast({
+        title: "Account repaired",
+        description: "Your account data has been checked and repaired if needed.",
+      });
+      
+      // Refresh role after repair
+      await fetchUserRole(user.id);
+      
+      if (onRepair) {
+        onRepair();
       }
     } catch (error) {
       console.error("Error repairing account:", error);
@@ -77,10 +102,12 @@ const LoginTroubleshooting: React.FC<LoginTroubleshootingProps> = ({ onRepair })
     setIsRefreshingRole(true);
     try {
       console.log("Refreshing role for user:", user.id);
-      await fetchUserRole(user.id);
+      const role = await fetchUserRole(user.id);
       toast({
         title: "Role Refreshed",
-        description: "Your user role has been refreshed. Please check your dashboard.",
+        description: role 
+          ? `Your user role has been refreshed to: ${role}` 
+          : "Could not determine your role. A default role may be assigned.",
       });
     } catch (error) {
       console.error("Error refreshing role:", error);
@@ -96,32 +123,60 @@ const LoginTroubleshooting: React.FC<LoginTroubleshootingProps> = ({ onRepair })
   
   const handleResetConnection = async () => {
     setIsResettingConnection(true);
+    setConnectionAttempts(prev => prev + 1);
+    
     try {
       console.log("Resetting Supabase connection");
+      clearAuthErrors();
       
-      // Sign out and clear local storage to reset connection state
-      await supabase.auth.signOut();
+      if (connectionAttempts >= 2) {
+        // More aggressive reset - sign out and clear local storage
+        await supabase.auth.signOut();
+        localStorage.removeItem('supabase.auth.token');
+        
+        toast({
+          title: "Full Connection Reset",
+          description: "Authentication cleared. Please log in again.",
+        });
+        
+        // Reload the page after a short delay
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 1500);
+        return;
+      }
       
-      // Clear any cached data that might be causing issues
-      localStorage.removeItem('supabase.auth.token');
+      // Try to refresh the auth session first
+      const { error } = await supabase.auth.refreshSession();
+      
+      if (error) {
+        console.error("Error refreshing session:", error);
+        throw error;
+      }
+      
+      // Test the connection with a simple query
+      const { error: testError } = await supabase
+        .from('profiles')
+        .select('id')
+        .limit(1);
+        
+      if (testError) {
+        console.error("Connection test failed after reset:", testError);
+        throw testError;
+      }
       
       toast({
         title: "Connection Reset",
-        description: "Database connection has been reset. Please log in again.",
+        description: "Database connection has been successfully reset.",
       });
-      
-      // Reload the page after a short delay
-      setTimeout(() => {
-        window.location.href = '/login';
-      }, 1500);
-      
     } catch (error) {
       console.error("Error resetting connection:", error);
       toast({
-        title: "Error",
-        description: "Failed to reset connection. Please try again.",
+        title: "Connection Reset Failed",
+        description: "Could not reset connection. Try the full reset option.",
         variant: "destructive",
       });
+    } finally {
       setIsResettingConnection(false);
     }
   };
@@ -153,12 +208,12 @@ const LoginTroubleshooting: React.FC<LoginTroubleshootingProps> = ({ onRepair })
         {isRepairing ? (
           <>
             <Key className="mr-2 h-4 w-4 animate-spin" />
-            Verifying Account...
+            Repairing Account...
           </>
         ) : (
           <>
             <Key className="mr-2 h-4 w-4" />
-            Verify Account Data
+            Repair Account Data
           </>
         )}
       </Button>
@@ -172,7 +227,7 @@ const LoginTroubleshooting: React.FC<LoginTroubleshootingProps> = ({ onRepair })
         ) : (
           <>
             <Shield className="mr-2 h-4 w-4" />
-            Reset Database Connection
+            {connectionAttempts >= 2 ? 'Full Connection Reset' : 'Reset Database Connection'}
           </>
         )}
       </Button>

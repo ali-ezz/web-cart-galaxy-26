@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,6 @@ import { Database } from '@/integrations/supabase/types';
 import LoginTroubleshooting from '@/components/LoginTroubleshooting';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, Loader2 } from 'lucide-react';
-import { supabase } from "@/integrations/supabase/client";
 
 // Define type for roles from database
 type UserRole = Database["public"]["Enums"]["user_role"];
@@ -66,15 +65,11 @@ const roleQuestions: Record<string, RoleQuestion[]> = {
 };
 
 export default function RegisterPage() {
-  const { register: registerAuth, isAuthenticated, userRole, loading } = useAuth();
-  const navigate = useNavigate();
+  const { register: registerAuth, authState, clearAuthErrors } = useAuth();
   const [isRegistering, setIsRegistering] = useState(false);
   const [error, setError] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole>('customer');
   const [questionResponses, setQuestionResponses] = useState<Record<string, string>>({});
-  const [retryCount, setRetryCount] = useState(0);
-  const [verifyingSession, setVerifyingSession] = useState(true);
-  const [lastRedirectTime, setLastRedirectTime] = useState<number | null>(null);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
   
   const form = useForm<RegisterFormValues>({
@@ -87,84 +82,6 @@ export default function RegisterPage() {
       role: "customer"
     }
   });
-  
-  useEffect(() => {
-    console.log("RegisterPage state:", { 
-      isAuthenticated, 
-      userRole, 
-      loading, 
-      registrationSuccess 
-    });
-  }, [isAuthenticated, userRole, loading, registrationSuccess]);
-  
-  // Initial session check
-  useEffect(() => {
-    const verifySession = async () => {
-      try {
-        const { data, error } = await supabase.auth.getSession();
-        if (data.session) {
-          console.log("Active session found in RegisterPage");
-        }
-      } catch (err) {
-        console.error("Error verifying session:", err);
-      } finally {
-        setVerifyingSession(false);
-      }
-    };
-    
-    verifySession();
-  }, []);
-  
-  // Check if already authenticated and redirect 
-  useEffect(() => {
-    const now = Date.now();
-    
-    // Prevent multiple redirects within a short time window
-    if (lastRedirectTime && now - lastRedirectTime < 2000) {
-      return;
-    }
-    
-    if (!verifyingSession && isAuthenticated) {
-      // Set the redirect time to prevent multiple redirects
-      setLastRedirectTime(now);
-      
-      console.log("User already authenticated, preparing to redirect with role:", userRole);
-      
-      // Add a short delay to ensure role is loaded
-      setTimeout(() => {
-        if (userRole) {
-          console.log(`Redirecting authenticated user to ${userRole} dashboard`);
-          
-          switch (userRole) {
-            case 'admin':
-              navigate('/admin', { replace: true });
-              break;
-            case 'seller':
-              navigate('/seller', { replace: true });
-              break;
-            case 'delivery':
-              navigate('/delivery', { replace: true });
-              break;
-            default:
-              navigate('/', { replace: true });
-              break;
-          }
-        } else {
-          // If no role detected yet, go to welcome page which handles role detection
-          console.log("No role detected, redirecting to welcome page");
-          navigate('/welcome', { replace: true });
-        }
-      }, 500);
-    }
-  }, [isAuthenticated, userRole, navigate, verifyingSession, lastRedirectTime]);
-  
-  // Handle successful registration
-  useEffect(() => {
-    if (registrationSuccess && !loading) {
-      console.log("Registration was successful, navigating to auth confirmation");
-      navigate('/auth-confirmation');
-    }
-  }, [registrationSuccess, loading, navigate]);
   
   const handleRoleChange = (role: UserRole) => {
     setSelectedRole(role);
@@ -183,8 +100,8 @@ export default function RegisterPage() {
   
   const handleRetry = () => {
     setError('');
-    setRetryCount(prev => prev + 1);
     form.clearErrors();
+    clearAuthErrors();
   };
   
   const onSubmit = async (data: RegisterFormValues) => {
@@ -192,6 +109,7 @@ export default function RegisterPage() {
     
     setIsRegistering(true);
     setError('');
+    clearAuthErrors();
     
     // Validate role-specific questions
     const questions = roleQuestions[selectedRole] || [];
@@ -247,12 +165,11 @@ export default function RegisterPage() {
               <p className="text-gray-600 mb-4">
                 Check your email for a verification link. After confirming your email, you'll be ready to use your account.
               </p>
-              <Button 
-                onClick={() => navigate('/login')} 
-                className="w-full mt-4"
-              >
-                Go to Login
-              </Button>
+              <Link to="/login">
+                <Button className="w-full mt-4">
+                  Go to Login
+                </Button>
+              </Link>
             </div>
           </Card>
         </div>
@@ -283,7 +200,7 @@ export default function RegisterPage() {
                     size="sm" 
                     onClick={handleRetry} 
                     className="mt-2"
-                    disabled={isRegistering || loading}
+                    disabled={isRegistering}
                   >
                     Retry Connection
                   </Button>
@@ -292,10 +209,10 @@ export default function RegisterPage() {
             </Alert>
           )}
           
-          {verifyingSession ? (
+          {authState === 'initializing' ? (
             <div className="flex justify-center items-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-shop-purple" />
-              <p className="ml-2">Verifying session...</p>
+              <p className="ml-2">Preparing registration...</p>
             </div>
           ) : (
             <Form {...form}>
@@ -309,6 +226,7 @@ export default function RegisterPage() {
                       <FormControl>
                         <Input 
                           placeholder="John Doe" 
+                          autoComplete="name"
                           {...field} 
                         />
                       </FormControl>
@@ -327,6 +245,7 @@ export default function RegisterPage() {
                         <Input 
                           type="email" 
                           placeholder="you@example.com" 
+                          autoComplete="email"
                           {...field} 
                         />
                       </FormControl>
@@ -345,6 +264,7 @@ export default function RegisterPage() {
                         <Input 
                           type="password" 
                           placeholder="••••••••" 
+                          autoComplete="new-password"
                           {...field} 
                         />
                       </FormControl>
@@ -363,6 +283,7 @@ export default function RegisterPage() {
                         <Input 
                           type="password" 
                           placeholder="••••••••" 
+                          autoComplete="new-password"
                           {...field} 
                         />
                       </FormControl>
@@ -430,9 +351,9 @@ export default function RegisterPage() {
                 <Button
                   type="submit"
                   className="w-full bg-shop-purple hover:bg-shop-purple-dark py-6"
-                  disabled={isRegistering || loading}
+                  disabled={isRegistering || authState === 'initializing'}
                 >
-                  {isRegistering || loading ? (
+                  {isRegistering ? (
                     <> 
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating Account...
                     </>

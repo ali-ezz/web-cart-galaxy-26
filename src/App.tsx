@@ -6,6 +6,7 @@ import { AuthProvider } from '@/context/AuthContext';
 import { CartProvider } from '@/context/CartContext';
 import { Toaster } from "@/components/ui/toaster";
 import { Header } from '@/components/Header';
+import { AuthRedirect } from '@/components/AuthRedirect';
 import Index from '@/pages/Index';
 import ProductPage from '@/pages/ProductPage';
 import AdminDashboardPage from '@/pages/AdminDashboardPage';
@@ -25,11 +26,14 @@ import WelcomePage from '@/pages/WelcomePage';
 import AuthConfirmationPage from '@/pages/AuthConfirmationPage';
 // Add other imports as needed
 
-// Create a client for React Query
+// Create a client for React Query with improved settings
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: 2,
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
+      staleTime: 30000, // 30 seconds
+      cacheTime: 300000, // 5 minutes
       refetchOnWindowFocus: false,
     },
   },
@@ -49,23 +53,83 @@ function App() {
                   <Route path="/" element={<Index />} />
                   <Route path="/home" element={<Index />} />
                   <Route path="/product/:id" element={<ProductPage />} />
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route path="/register" element={<RegisterPage />} />
+                  
+                  {/* Auth routes */}
+                  <Route path="/login" element={
+                    <AuthRedirect>
+                      <LoginPage />
+                    </AuthRedirect>
+                  } />
+                  <Route path="/register" element={
+                    <AuthRedirect>
+                      <RegisterPage />
+                    </AuthRedirect>
+                  } />
                   <Route path="/auth-confirmation" element={<AuthConfirmationPage />} />
-                  <Route path="/cart" element={<CartPage />} />
-                  <Route path="/welcome" element={<WelcomePage />} />
+                  <Route path="/welcome" element={
+                    <AuthRedirect requireAuth={true}>
+                      <WelcomePage />
+                    </AuthRedirect>
+                  } />
+                  
+                  {/* Customer routes */}
+                  <Route path="/cart" element={
+                    <AuthRedirect requireAuth={true}>
+                      <CartPage />
+                    </AuthRedirect>
+                  } />
+                  <Route path="/account" element={
+                    <AuthRedirect requireAuth={true}>
+                      <AccountPage />
+                    </AuthRedirect>
+                  } />
                   
                   {/* Role-specific routes */}
-                  <Route path="/admin" element={<AdminDashboardPage />} />
-                  <Route path="/admin/products" element={<AdminProductsPage />} />
-                  <Route path="/seller" element={<SellerDashboardPage />} />
-                  <Route path="/delivery" element={<DeliveryDashboardPage />} />
-                  <Route path="/delivery/schedule" element={<DeliverySchedulePage />} />
-                  <Route path="/delivery/assignments" element={<DeliveryAssignmentsPage />} />
-                  <Route path="/delivery/routes" element={<DeliveryRoutesPage />} />
-                  <Route path="/delivery/earnings" element={<DeliveryEarningsPage />} />
-                  <Route path="/delivery/available" element={<AvailableOrdersPage />} />
-                  <Route path="/account" element={<AccountPage />} />
+                  <Route path="/admin" element={
+                    <AuthRedirect requireAuth={true} allowedRoles={['admin']}>
+                      <AdminDashboardPage />
+                    </AuthRedirect>
+                  } />
+                  <Route path="/admin/products" element={
+                    <AuthRedirect requireAuth={true} allowedRoles={['admin']}>
+                      <AdminProductsPage />
+                    </AuthRedirect>
+                  } />
+                  <Route path="/seller" element={
+                    <AuthRedirect requireAuth={true} allowedRoles={['seller']}>
+                      <SellerDashboardPage />
+                    </AuthRedirect>
+                  } />
+                  <Route path="/delivery" element={
+                    <AuthRedirect requireAuth={true} allowedRoles={['delivery']}>
+                      <DeliveryDashboardPage />
+                    </AuthRedirect>
+                  } />
+                  <Route path="/delivery/schedule" element={
+                    <AuthRedirect requireAuth={true} allowedRoles={['delivery']}>
+                      <DeliverySchedulePage />
+                    </AuthRedirect>
+                  } />
+                  <Route path="/delivery/assignments" element={
+                    <AuthRedirect requireAuth={true} allowedRoles={['delivery']}>
+                      <DeliveryAssignmentsPage />
+                    </AuthRedirect>
+                  } />
+                  <Route path="/delivery/routes" element={
+                    <AuthRedirect requireAuth={true} allowedRoles={['delivery']}>
+                      <DeliveryRoutesPage />
+                    </AuthRedirect>
+                  } />
+                  <Route path="/delivery/earnings" element={
+                    <AuthRedirect requireAuth={true} allowedRoles={['delivery']}>
+                      <DeliveryEarningsPage />
+                    </AuthRedirect>
+                  } />
+                  <Route path="/delivery/available" element={
+                    <AuthRedirect requireAuth={true} allowedRoles={['delivery']}>
+                      <AvailableOrdersPage />
+                    </AuthRedirect>
+                  } />
                   
                   {/* Redirect for invalid routes */}
                   <Route path="*" element={<Navigate to="/" replace />} />
