@@ -6,6 +6,7 @@ import { RefreshCw, AlertCircle, CheckCircle, Database, Wifi, WifiOff } from 'lu
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { PostgrestError } from '@supabase/supabase-js';
 
 export function DatabaseConnectionCheck() {
   const [status, setStatus] = useState<'checking' | 'success' | 'error'>('checking');
@@ -34,9 +35,10 @@ export function DatabaseConnectionCheck() {
       const apiCheckPromise = supabase.from('profiles').select('id').limit(1);
       const apiResult = await Promise.race([apiCheckPromise, timeoutPromise]);
       
-      if (apiResult.error) {
-        console.warn('API connectivity test failed:', apiResult.error);
-        throw apiResult.error;
+      const resultWithError = apiResult as { error?: PostgrestError };
+      if (resultWithError.error) {
+        console.warn('API connectivity test failed:', resultWithError.error);
+        throw resultWithError.error;
       } else {
         console.log('API connectivity test successful');
       }
@@ -45,13 +47,14 @@ export function DatabaseConnectionCheck() {
       const dbCheckPromise = supabase.from('profiles').select('id').limit(1);
       const dbResult = await Promise.race([dbCheckPromise, timeoutPromise]);
       
-      if (dbResult.error) {
-        console.error('Database connection error:', dbResult.error);
+      const dbResultWithError = dbResult as { error?: PostgrestError };
+      if (dbResultWithError.error) {
+        console.error('Database connection error:', dbResultWithError.error);
         setStatus('error');
-        setErrorDetails(dbResult.error.message || 'Unknown database error');
+        setErrorDetails(dbResultWithError.error.message || 'Unknown database error');
         
         // Check if this is a network error
-        if (dbResult.error.message?.includes('network') || dbResult.error.code === 'NETWORK_ERROR') {
+        if (dbResultWithError.error.message?.includes('network') || dbResultWithError.error.code === 'NETWORK_ERROR') {
           setErrorDetails('Network error: Unable to reach the database. Please check your internet connection.');
         }
 

@@ -150,6 +150,9 @@ export default function RegisterPage() {
     }
   };
 
+  // Check if auth is initializing
+  const isAuthInitializing = authState === 'initializing';
+
   if (registrationSuccess) {
     return (
       <div className="container mx-auto px-4 py-12">
@@ -209,7 +212,7 @@ export default function RegisterPage() {
             </Alert>
           )}
           
-          {authState === 'initializing' ? (
+          {isAuthInitializing ? (
             <div className="flex justify-center items-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-shop-purple" />
               <p className="ml-2">Preparing registration...</p>
@@ -351,7 +354,7 @@ export default function RegisterPage() {
                 <Button
                   type="submit"
                   className="w-full bg-shop-purple hover:bg-shop-purple-dark py-6"
-                  disabled={isRegistering || authState === 'initializing'}
+                  disabled={isRegistering || isAuthInitializing}
                 >
                   {isRegistering ? (
                     <> 

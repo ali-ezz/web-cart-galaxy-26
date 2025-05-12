@@ -33,7 +33,7 @@ const queryClient = new QueryClient({
       retry: 2,
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
       staleTime: 30000, // 30 seconds
-      cacheTime: 300000, // 5 minutes
+      gcTime: 300000, // 5 minutes (replaces deprecated cacheTime)
       refetchOnWindowFocus: false,
     },
   },

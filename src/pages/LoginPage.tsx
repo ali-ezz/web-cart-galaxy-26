@@ -77,6 +77,9 @@ export default function LoginPage() {
     clearAuthErrors();
   };
 
+  // Check if auth is initializing
+  const isAuthInitializing = authState === 'initializing';
+
   return (
     <div className="container mx-auto px-4 py-12">
       <div className="max-w-md mx-auto">
@@ -109,7 +112,7 @@ export default function LoginPage() {
             </Alert>
           )}
           
-          {authState === 'initializing' ? (
+          {isAuthInitializing ? (
             <div className="flex justify-center items-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-shop-purple" />
               <p className="ml-2">Preparing login...</p>
@@ -163,7 +166,7 @@ export default function LoginPage() {
                 <Button
                   type="submit"
                   className="w-full bg-shop-purple hover:bg-shop-purple-dark py-6"
-                  disabled={isLoggingIn || authState === 'initializing'}
+                  disabled={isLoggingIn || isAuthInitializing}
                 >
                   {isLoggingIn ? (
                     <> 

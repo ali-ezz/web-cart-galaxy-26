@@ -37,6 +37,7 @@ interface AuthContextType {
   sendPasswordResetEmail: (email: string) => Promise<boolean>;
   authState: AuthState;
   clearAuthErrors: () => void;
+  debugAuthState: () => Record<string, any>; // Add the missing function
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -70,6 +71,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Clear any authentication errors
   const clearAuthErrors = () => {
     setAuthError(null);
+  };
+
+  // Debug function to get current auth state for debugging
+  const debugAuthState = () => {
+    return {
+      user,
+      isAuthenticated,
+      authState,
+      userRole,
+      sessionChecked,
+      roleFetchAttempts,
+      hasSession: !!session,
+      sessionUserId: session?.user?.id,
+      error: authError
+    };
   };
 
   // Enhanced function to fetch user role with improved error handling and SSO support
@@ -467,7 +483,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       fetchUserRole,
       sendPasswordResetEmail,
       authState,
-      clearAuthErrors
+      clearAuthErrors,
+      debugAuthState
     }}>
       {children}
     </AuthContext.Provider>
