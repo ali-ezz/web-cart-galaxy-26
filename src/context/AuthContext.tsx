@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -37,7 +36,7 @@ interface AuthContextType {
   sendPasswordResetEmail: (email: string) => Promise<boolean>;
   authState: AuthState;
   clearAuthErrors: () => void;
-  debugAuthState: () => Record<string, any>; // Add the missing function
+  debugAuthState: () => Record<string, any>; // Make sure this is included
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);

@@ -16,5 +16,31 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     autoRefreshToken: true,
     detectSessionInUrl: true, // Enable session detection in URL for SSO flows
     flowType: 'pkce' // Use PKCE flow for better OAuth security
+  },
+  global: {
+    fetch: (...args) => {
+      // Custom fetch with timeout
+      const fetchPromise = fetch(...args);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Connection timed out')), 15000); // 15 second timeout
+      });
+      return Promise.race([fetchPromise, timeoutPromise]) as Promise<Response>;
+    }
+  },
+  db: {
+    schema: 'public'
+  },
+  realtime: {
+    timeout: 10000 // 10 seconds
   }
 });
+
+// Add a connection health check function
+export const checkSupabaseConnection = async () => {
+  try {
+    const { data, error } = await supabase.from('profiles').select('id').limit(1).maybeSingle();
+    return { success: !error, error };
+  } catch (err) {
+    return { success: false, error: err };
+  }
+};

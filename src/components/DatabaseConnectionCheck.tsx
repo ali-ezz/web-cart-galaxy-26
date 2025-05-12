@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -7,6 +6,11 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { PostgrestError } from '@supabase/supabase-js';
+
+interface ApiResult {
+  error?: PostgrestError;
+  data?: any;
+}
 
 export function DatabaseConnectionCheck() {
   const [status, setStatus] = useState<'checking' | 'success' | 'error'>('checking');
@@ -33,28 +37,26 @@ export function DatabaseConnectionCheck() {
       
       // Use Promise.race to implement timeout
       const apiCheckPromise = supabase.from('profiles').select('id').limit(1);
-      const apiResult = await Promise.race([apiCheckPromise, timeoutPromise]);
+      const apiResult = await Promise.race([apiCheckPromise, timeoutPromise]) as ApiResult;
       
-      const resultWithError = apiResult as { error?: PostgrestError };
-      if (resultWithError.error) {
-        console.warn('API connectivity test failed:', resultWithError.error);
-        throw resultWithError.error;
+      if (apiResult.error) {
+        console.warn('API connectivity test failed:', apiResult.error);
+        throw apiResult.error;
       } else {
         console.log('API connectivity test successful');
       }
       
       // Simple query to test database connectivity with timeout
       const dbCheckPromise = supabase.from('profiles').select('id').limit(1);
-      const dbResult = await Promise.race([dbCheckPromise, timeoutPromise]);
+      const dbResult = await Promise.race([dbCheckPromise, timeoutPromise]) as ApiResult;
       
-      const dbResultWithError = dbResult as { error?: PostgrestError };
-      if (dbResultWithError.error) {
-        console.error('Database connection error:', dbResultWithError.error);
+      if (dbResult.error) {
+        console.error('Database connection error:', dbResult.error);
         setStatus('error');
-        setErrorDetails(dbResultWithError.error.message || 'Unknown database error');
+        setErrorDetails(dbResult.error.message || 'Unknown database error');
         
         // Check if this is a network error
-        if (dbResultWithError.error.message?.includes('network') || dbResultWithError.error.code === 'NETWORK_ERROR') {
+        if (dbResult.error.message?.includes('network') || dbResult.error.code === 'NETWORK_ERROR') {
           setErrorDetails('Network error: Unable to reach the database. Please check your internet connection.');
         }
 
@@ -111,6 +113,15 @@ export function DatabaseConnectionCheck() {
 
   useEffect(() => {
     checkConnectionWithTimeout();
+    
+    // Set up a regular polling interval to keep checking the connection
+    const checkInterval = setInterval(() => {
+      if (!isRetrying && status === 'error') {
+        checkConnectionWithTimeout();
+      }
+    }, 10000); // Check every 10 seconds if we're in error state
+    
+    return () => clearInterval(checkInterval);
   }, []);
 
   if (status === 'success') {

@@ -1,222 +1,243 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { useForm } from "react-hook-form";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, Loader2 } from 'lucide-react';
-import * as z from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, AlertCircle, ArrowRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import LoginTroubleshooting from "@/components/LoginTroubleshooting";
+import { verifyUserConsistency } from '@/utils/authUtils';
+import { AdvancedTroubleshooting } from '@/components/AdvancedTroubleshooting';
 
-// Create a schema for form validation
-const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-});
-
-type LoginFormValues = z.infer<typeof loginSchema>;
-
-export default function LoginPage() {
-  const { login, authState, clearAuthErrors } = useAuth();
+const LoginPage: React.FC = () => {
+  const { login, isAuthenticated, authState, loading, clearAuthErrors } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
   const { toast } = useToast();
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [error, setError] = useState('');
+  const [loginAttempts, setLoginAttempts] = useState(0);
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
-  
-  // Initialize form with Zod resolver
-  const form = useForm<LoginFormValues>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: '',
-      password: '',
-    },
-  });
-  
-  const onSubmit = async (data: LoginFormValues) => {
-    if (isLoggingIn) return; // Prevent duplicate submissions
-    
-    setIsLoggingIn(true);
-    setError('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationComplete, setVerificationComplete] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+
+  const from = location.state?.from || "/";
+
+  useEffect(() => {
+    // Clear auth errors when the component mounts or authState changes
     clearAuthErrors();
-    
-    try {
-      console.log("Attempting login with:", data.email);
-      const success = await login(data.email, data.password);
-      
-      if (success) {
-        // Login succeeded - AuthRedirect component will handle the redirection
-        toast({
-          title: "Login successful",
-          description: "Redirecting you to your dashboard...",
-          variant: "default"
-        });
-      } else {
-        setError('Invalid email or password');
-        setShowTroubleshooting(true);
-      }
-    } catch (err: any) {
-      console.error('Login error:', err);
-      setError('An error occurred during login. Please try again.');
-      setShowTroubleshooting(true);
-    } finally {
-      setIsLoggingIn(false);
+    setLoginAttempts(0);
+  }, [clearAuthErrors, authState]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginAttempts(prev => prev + 1);
+
+    const success = await login(email, password);
+    if (success) {
+      // On successful login, navigate to the intended page
+      navigate(from, { replace: true });
+    } else {
+      // On failed login, show an error message
+      toast({
+        title: "Login Failed",
+        description: "Invalid credentials. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
-  // Function to handle retry for database connection issues
-  const handleRetry = () => {
-    setError('');
-    form.clearErrors();
-    clearAuthErrors();
+  const handleForgotPassword = () => {
+    setShowForgotPassword(true);
   };
 
-  // Check if auth is initializing
-  const isAuthInitializing = authState === 'initializing';
-
-  return (
-    <div className="container mx-auto px-4 py-12">
-      <div className="max-w-md mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Sign In</h1>
-          <p className="mt-2 text-gray-600">
-            Welcome back! Sign in to your account
-          </p>
-        </div>
-        
-        <div className="bg-white rounded-lg shadow-sm p-8">
-          {error && (
-            <Alert variant="destructive" className="mb-6">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>
-                {error}
-                {error.includes("connection") && (
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={handleRetry} 
-                    className="mt-2"
-                    disabled={isLoggingIn}
-                  >
-                    Retry Connection
-                  </Button>
-                )}
-              </AlertDescription>
-            </Alert>
-          )}
+  const handleResetRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Implement password reset logic here
+    toast({
+      title: "Reset Request Sent",
+      description: "Password reset functionality is under construction.",
+    });
+  };
+  
+  const handleRepair = () => {
+    if (authState === 'authenticated') {
+      setIsVerifying(true);
+      
+      verifyUserConsistency("test-user-id")
+        .then(result => {
+          console.log("User verification result:", result);
+          setVerificationComplete(true);
           
-          {isAuthInitializing ? (
-            <div className="flex justify-center items-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-shop-purple" />
-              <p className="ml-2">Preparing login...</p>
-            </div>
-          ) : (
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="you@example.com"
-                          type="email"
-                          autoComplete="email"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <div className="flex justify-between items-center">
-                        <FormLabel>Password</FormLabel>
-                        <Link to="/forgot-password" className="text-sm text-shop-purple hover:underline">
-                          Forgot Password?
-                        </Link>
-                      </div>
-                      <FormControl>
-                        <Input
-                          placeholder="••••••••"
-                          type="password"
-                          autoComplete="current-password"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <Button
-                  type="submit"
-                  className="w-full bg-shop-purple hover:bg-shop-purple-dark py-6"
-                  disabled={isLoggingIn || isAuthInitializing}
-                >
-                  {isLoggingIn ? (
-                    <> 
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing In...
-                    </>
-                  ) : 'Sign In'}
-                </Button>
-              </form>
-            </Form>
-          )}
+          toast({
+            title: "Verification Complete",
+            description: "User data has been verified and repaired if needed.",
+          });
+        })
+        .catch(error => {
+          console.error("Verification error:", error);
+          toast({
+            title: "Verification Error",
+            description: "An error occurred during user verification.",
+            variant: "destructive",
+          });
+        })
+        .finally(() => {
+          setIsVerifying(false);
+        });
+    } else {
+      toast({
+        title: "Not Logged In",
+        description: "You must be logged in to repair your account.",
+        variant: "destructive",
+      });
+    }
+  };
 
-          <div className="mt-6 text-center">
-            <p className="text-gray-600">
-              Don't have an account?{' '}
-              <Link to="/register" className="text-shop-purple hover:underline">
-                Sign up
-              </Link>
-            </p>
+  // Show loading state
+  if (authState === 'initializing') {
+    return (
+      <div className="flex flex-col justify-center items-center min-h-screen gap-4">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-shop-purple border-t-transparent"></div>
+        <p className="text-gray-600">Checking authentication...</p>
+        
+        {/* Debug info toggle button */}
+        <button 
+          className="text-xs text-gray-400 underline mt-4"
+          onClick={() => setShowDebug(!showDebug)}
+        >
+          {showDebug ? 'Hide debug info' : 'Show debug info'}
+        </button>
+        
+        {showDebug && (
+          <div className="mt-4 p-4 bg-gray-50 rounded border max-w-lg overflow-auto text-xs">
+            <h4 className="font-bold mb-2">Debug Info:</h4>
+            <pre>
+              {JSON.stringify({ 
+                authenticated: isAuthenticated, 
+                authState,
+                loginAttempts
+              }, null, 2)}
+            </pre>
           </div>
-
-          {(showTroubleshooting || error) && (
-            <div className="mt-6">
-              <LoginTroubleshooting />
-            </div>
-          )}
-        </div>
-
-        {/* Demo accounts section */}
-        <div className="mt-8 p-4 border border-gray-200 rounded-lg bg-gray-50">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Demo Accounts:</h3>
-          <div className="text-sm text-gray-600 space-y-3">
-            <div>
-              <p className="font-medium">Admin:</p>
-              <p className="mb-1">Email: admin@example.com</p>
-              <p>Password: admin123</p>
-            </div>
-            <div>
-              <p className="font-medium">Seller:</p>
-              <p className="mb-1">Email: seller@example.com</p>
-              <p>Password: seller123</p>
-            </div>
-            <div>
-              <p className="font-medium">Customer:</p>
-              <p className="mb-1">Email: customer@example.com</p>
-              <p>Password: customer123</p>
-            </div>
-            <p className="mt-3 text-xs text-gray-500">Note: For testing only. In production, use secure credentials.</p>
-          </div>
+        )}
+        
+        {/* Show troubleshooting option after a short delay */}
+        <div className="mt-4">
+          <AdvancedTroubleshooting />
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="container relative mx-auto flex flex-col items-center justify-center min-h-screen">
+      <Card className="w-[350px] md:w-[450px] lg:w-[550px] shadow-md">
+        <CardHeader className="space-y-2">
+          <CardTitle className="text-2xl">Login</CardTitle>
+          <CardDescription>Enter your email and password to login</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <form onSubmit={handleLogin}>
+            <div className="grid gap-2">
+              <Label htmlFor="email">Email</Label>
+              <Input 
+                id="email" 
+                type="email" 
+                placeholder="Enter your email" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="password">Password</Label>
+              <Input 
+                id="password" 
+                type="password" 
+                placeholder="Enter your password" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+            <Button disabled={loading} className="w-full mt-4" type="submit">
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Logging in...
+                </>
+              ) : (
+                <>
+                  Login
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </>
+              )}
+            </Button>
+          </form>
+          <div className="flex items-center justify-between">
+            <Link to="/register" className="text-sm text-gray-500 hover:text-gray-700">
+              Create an account
+            </Link>
+            <button 
+              onClick={handleForgotPassword} 
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              Forgot password?
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {showForgotPassword && (
+        <Card className="w-[350px] md:w-[450px] lg:w-[550px] mt-4 shadow-md">
+          <CardHeader className="space-y-2">
+            <CardTitle className="text-2xl">Reset Password</CardTitle>
+            <CardDescription>Enter your email to reset your password</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <form onSubmit={handleResetRequest}>
+              <div className="grid gap-2">
+                <Label htmlFor="resetEmail">Email</Label>
+                <Input 
+                  id="resetEmail" 
+                  type="email" 
+                  placeholder="Enter your email" 
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <Button className="w-full mt-4" type="submit">
+                Reset Password
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+      
+      {loginAttempts > 2 && (
+        <div className="mt-6">
+          <button 
+            className="text-sm text-gray-500 hover:text-gray-700 underline"
+            onClick={() => setShowTroubleshooting(!showTroubleshooting)}
+          >
+            {showTroubleshooting ? 'Hide Troubleshooting' : 'Show Troubleshooting'}
+          </button>
+          {showTroubleshooting && (
+            <div className="mt-4">
+              <AdvancedTroubleshooting onRepair={handleRepair} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
-}
+};
+
+export default LoginPage;

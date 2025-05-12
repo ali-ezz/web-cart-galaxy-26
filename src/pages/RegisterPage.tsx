@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -151,7 +150,7 @@ export default function RegisterPage() {
   };
 
   // Check if auth is initializing
-  const isAuthInitializing = authState === 'initializing';
+  const isAuthInitializing = authState !== 'initializing';
 
   if (registrationSuccess) {
     return (
